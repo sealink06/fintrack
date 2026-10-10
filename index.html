@@ -217,72 +217,142 @@ const S={members:[],holdings:[],assets:[],snaps:[],settings:{fx:95,gold:null,sil
   hf:{q:'',cls:'',type:'',missing:false,sold:false,sort:'value',dir:-1},tf:{q:'',type:'',limit:150},mode:'local',writeOk:true,snapDone:false};
 
 /* ============================== login lock (this device only) ============================== */
-/* Data is encrypted in the browser with a key made from username + password (PBKDF2 then AES-GCM). Nothing is sent anywhere. */
-const Auth={key:null,salt:null,iters:200000,active:false,t:0,fails:0,
+/* Your data is encrypted in the browser with a random data key. That key is stored twice, locked once by username + password and once by a recovery code.
+   Either one opens it, so a forgotten password can be reset with the recovery code. Nothing is sent anywhere. */
+const Auth={dek:null,rec:null,iters:200000,active:false,t:0,fails:0,
   ok(){try{if(!(window.crypto&&crypto.subtle&&window.TextEncoder))return false;localStorage.setItem('ft_probe','1');localStorage.removeItem('ft_probe');return true}catch(e){return false}},
   b64(buf){let s='';const a=new Uint8Array(buf);for(let i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s)},
   unb64(s){const b=atob(s),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a},
-  async derive(user,pw,salt,iters){const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(user.trim().toLowerCase()+'\u0000'+pw),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iters,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])},
-  async seal(obj){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},this.key,new TextEncoder().encode(JSON.stringify(obj)));return JSON.stringify({v:1,salt:this.b64(this.salt),iters:this.iters,iv:this.b64(iv),ct:this.b64(ct)})},
+  rnd(n){return crypto.getRandomValues(new Uint8Array(n))},
+  enc(s){return new TextEncoder().encode(s)},
+  pwSecret(u,p){return String(u).trim().toLowerCase()+'\u0000'+p},
+  rcSecret(c){return 'rc\u0000'+String(c).toUpperCase().replace(/[^A-Z0-9]/g,'')},
+  genCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',r=this.rnd(20);let s='';for(let i=0;i<20;i++){s+=A[r[i]%32];if(i%5===4&&i<19)s+='-'}return s},
+  async kek(secret,salt,iters){const base=await crypto.subtle.importKey('raw',this.enc(secret),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iters,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])},
+  newDek(){return crypto.subtle.generateKey({name:'AES-GCM',length:256},true,['encrypt','decrypt'])},
+  async wrap(kek,dek){const raw=await crypto.subtle.exportKey('raw',dek),iv=this.rnd(12);return {iv:this.b64(iv),ct:this.b64(await crypto.subtle.encrypt({name:'AES-GCM',iv},kek,raw))}},
+  async unwrap(kek,w){const raw=await crypto.subtle.decrypt({name:'AES-GCM',iv:this.unb64(w.iv)},kek,this.unb64(w.ct));return crypto.subtle.importKey('raw',raw,'AES-GCM',true,['encrypt','decrypt'])},
+  async wrapPw(u,p){const salt=this.rnd(16),k=await this.kek(this.pwSecret(u,p),salt,this.iters);return {salt:this.b64(salt),...await this.wrap(k,this.dek)}},
+  async wrapRc(c){const salt=this.rnd(16),k=await this.kek(this.rcSecret(c),salt,this.iters);return {salt:this.b64(salt),...await this.wrap(k,this.dek)}},
+  async seal(obj){const iv=this.rnd(12),ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},this.dek,this.enc(JSON.stringify(obj)));return JSON.stringify({...this.rec,iv:this.b64(iv),ct:this.b64(ct)})},
   async open(rec,key){const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:this.unb64(rec.iv)},key,this.unb64(rec.ct));return JSON.parse(new TextDecoder().decode(pt))},
   persist(){clearTimeout(this.t);this.t=setTimeout(async()=>{try{saveLS('fintrack_enc_v1',await this.seal(snapState()))}catch(e){}},60)},
+  async persistNow(){clearTimeout(this.t);saveLS('fintrack_enc_v1',await this.seal(snapState()))},
+  async changeLogin(u,p){this.rec.pw=await this.wrapPw(u,p);await this.persistNow()},
+  async newRecovery(){const c=this.genCode();this.rec.rc=await this.wrapRc(c);await this.persistNow();return c},
+  codeFile(code){return 'Family FinTrack recovery code\n\n'+code+'\n\nKeep this somewhere safe and private. With this code you can set a new password if you forget yours. Anyone who has it and uses the same browser can open your data, so do not share it.\n'},
   async start(){
     if(!this.ok())return null;
     let rec=null;try{rec=JSON.parse(loadLS('fintrack_enc_v1')||'null')}catch(e){}
-    if(rec&&!(rec.salt&&rec.iv&&rec.ct))rec=null;
+    if(rec&&!((rec.pw||rec.salt)&&rec.iv&&rec.ct))rec=null;
+    if(!rec&&loadLS('ft_skip')==='1')return null;
     let old=null;try{old=JSON.parse(loadLS('fintrack_v1')||'null')}catch(e){}
     return new Promise(resolve=>this.screen(rec,old,resolve));
   },
   screen(rec,old,resolve){
     document.body.classList.add('locked');
-    const setup=!rec,root=document.createElement('div');root.className='lock';root.id='lock';
-    const hasOld=setup&&old&&((old.holdings||[]).length||(old.assets||[]).length);
-    root.innerHTML=`<div class="panel box"><div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div><b>Family FinTrack</b><span>Family wealth cockpit</span></div></div>
-      <div><h2 style="font-size:18px">${setup?'Create your login':'Welcome back'}</h2><div class="muted" style="font-size:12.5px;margin-top:4px">${setup?'Choose a username and password. Your data is locked with them on this device, and you will need them each time you open the dashboard.':'Enter your username and password to open your dashboard.'}</div></div>
-      ${hasOld?'<div class="banner info" style="padding:10px 12px;font-size:12.5px">Data already saved on this device will be locked with this login.</div>':''}
-      <form id="lock-form" autocomplete="on"><label class="fld"><span>Username</span><input type="text" id="lk-user" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
-      <label class="fld"><span>Password</span><input type="password" id="lk-pw" autocomplete="${setup?'new-password':'current-password'}" required></label>
-      ${setup?'<label class="fld"><span>Confirm password</span><input type="password" id="lk-pw2" autocomplete="new-password" required><small>At least 8 characters.</small></label>':''}
-      <div class="err" id="lk-err" role="alert"></div>
-      <button class="btn btn-primary" type="submit" id="lk-go">${setup?'Create login':'Open dashboard'}</button></form>
-      ${setup?'<div class="muted" style="font-size:12px">If you forget the password, your saved data cannot be recovered. There is no reset by email.</div>':'<div id="lk-forgot"><button class="linkbtn" type="button" id="lk-forgot-btn">Forgot your password?</button></div>'}</div>`;
-    document.body.appendChild(root);
-    const u=$('#lk-user');if(u)u.focus();
-    const err=m=>{$('#lk-err').textContent=m||''};
-    const finish=async(key,salt,data)=>{this.key=key;this.salt=salt;this.active=true;root.remove();document.body.classList.remove('locked');const b=$('#btn-lock');if(b)b.hidden=false;resolve({data})};
-    $('#lock-form').addEventListener('submit',async e=>{
-      e.preventDefault();err('');const user=$('#lk-user').value.trim(),pw=$('#lk-pw').value,go=$('#lk-go');
-      if(!user){err('Enter a username.');return}
-      go.disabled=true;go.textContent='Please wait…';
-      try{
-        if(setup){
-          if(pw.length<8){err('Use at least 8 characters for the password.');return}
-          if(pw!==$('#lk-pw2').value){err('The two passwords do not match.');return}
-          const salt=crypto.getRandomValues(new Uint8Array(16));
-          const key=await this.derive(user,pw,salt,this.iters);
-          this.key=key;this.salt=salt;
-          const data=hasOld?old:{members:[],holdings:[],assets:[],snaps:[],settings:{}};
-          saveLS('fintrack_enc_v1',await this.seal(data));
-          if(hasOld||old)try{localStorage.removeItem('fintrack_v1')}catch(x){}
-          await finish(key,salt,hasOld?old:null);
-        }else{
-          if(this.fails>0)await sleep(Math.min(this.fails*700,4000));
-          const key=await this.derive(user,pw,this.unb64(rec.salt),rec.iters||this.iters);
-          let data;try{data=await this.open(rec,key)}catch(x){this.fails++;err('Incorrect username or password.');return}
-          this.iters=rec.iters||this.iters;
-          await finish(key,this.unb64(rec.salt),data);
-        }
-      }catch(x){err('Something went wrong. Please try again.')}
-      finally{const g=$('#lk-go');if(g){g.disabled=false;g.textContent=setup?'Create login':'Open dashboard'}}
-    });
-    const fb=$('#lk-forgot-btn');
-    if(fb)fb.addEventListener('click',()=>{
+    const root=document.createElement('div');root.className='lock';root.id='lock';document.body.appendChild(root);
+    const hasOld=!rec&&old&&((old.holdings||[]).length||(old.assets||[]).length);
+    const head='<div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div><b>Family FinTrack</b><span>Family wealth cockpit</span></div></div>';
+    const err=m=>{const e=$('#lk-err');if(e)e.textContent=m||''};
+    const finish=(dek,data)=>{this.dek=dek;this.active=true;root.remove();document.body.classList.remove('locked');const b=$('#btn-lock');if(b)b.hidden=false;resolve({data})};
+    const lbl=(setup)=>setup?'Create login':'Open dashboard';
+    const run=(fn,label)=>async e=>{e.preventDefault();err('');const go=$('#lk-go');if(go){go.disabled=true;go.textContent='Please wait…'}
+      try{await fn()}catch(x){err('Something went wrong. Please try again.')}finally{const g=$('#lk-go');if(g){g.disabled=false;g.textContent=label}}};
+    const codeScreen=(code,next)=>{
+      root.innerHTML=`<div class="panel box">${head}<div><h2 style="font-size:18px">Save your recovery code</h2><div class="muted" style="font-size:12.5px;margin-top:4px">If you ever forget your password, this code lets you set a new one without losing your data. It is shown only now, so keep it somewhere safe, such as a password manager, a note, or a screenshot.</div></div>
+        <div class="panel" style="padding:14px;text-align:center"><div class="label" style="margin-bottom:6px">Recovery code</div><div id="rc-code" style="font-family:var(--font-mono);font-size:17px;letter-spacing:.06em;word-break:break-all;user-select:all">${code}</div></div>
+        <div class="actions"><button class="btn btn-ghost" type="button" id="rc-copy">Copy</button><button class="btn btn-ghost" type="button" id="rc-dl">Download</button></div>
+        <label class="chip" style="cursor:pointer;align-self:flex-start"><input type="checkbox" id="rc-ok"> I have saved my recovery code</label>
+        <button class="btn btn-primary" type="button" id="rc-go" disabled>Continue</button></div>`;
+      $('#rc-ok').addEventListener('change',e=>{$('#rc-go').disabled=!e.target.checked});
+      $('#rc-copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(code);$('#rc-copy').textContent='Copied'}catch(e){$('#rc-copy').textContent='Select and copy it above'}});
+      $('#rc-dl').addEventListener('click',()=>blobSave('family-fintrack-recovery-code.txt',this.codeFile(code),'text/plain'));
+      $('#rc-go').addEventListener('click',next);
+    };
+    const eraseBlock=()=>{
       $('#lk-forgot').innerHTML='<div class="muted" style="font-size:12.5px;margin-bottom:8px">This erases everything saved on this device and lets you create a new login. It cannot be undone.</div><button class="btn btn-danger btn-sm" type="button" id="lk-wipe">Erase data and start over</button> <button class="btn btn-ghost btn-sm" type="button" id="lk-cancel">Cancel</button>';
       $('#lk-wipe').addEventListener('click',()=>{try{localStorage.removeItem('fintrack_enc_v1');localStorage.removeItem('fintrack_v1')}catch(x){}location.reload()});
-      $('#lk-cancel').addEventListener('click',()=>{root.remove();this.screen(rec,old,resolve)});
-    });
+      $('#lk-cancel').addEventListener('click',renderLogin);
+    };
+    const renderSetup=()=>{
+      root.innerHTML=`<div class="panel box">${head}<div><h2 style="font-size:18px">Create your login</h2><div class="muted" style="font-size:12.5px;margin-top:4px">Choose a username and password. Your data is locked with them on this device, and you will need them each time you open the dashboard.</div></div>
+        ${hasOld?'<div class="banner info" style="padding:10px 12px;font-size:12.5px">Data already saved on this device will be locked with this login.</div>':''}
+        <form id="lock-form" autocomplete="on"><label class="fld"><span>Username</span><input type="text" id="lk-user" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+        <label class="fld"><span>Password</span><input type="password" id="lk-pw" autocomplete="new-password" required></label>
+        <label class="fld"><span>Confirm password</span><input type="password" id="lk-pw2" autocomplete="new-password" required><small>At least 8 characters.</small></label>
+        <div class="err" id="lk-err" role="alert"></div>
+        <button class="btn btn-primary" type="submit" id="lk-go">Create login</button></form>
+        <div class="muted" style="font-size:12px">You will get a recovery code to keep, so a forgotten password can be reset.</div>
+        <div style="text-align:center"><button class="linkbtn" type="button" id="lk-skip">Skip for now</button><div class="muted" style="font-size:12px;margin-top:4px">Try the dashboard as it is. You can add a login later from Settings.</div></div></div>`;
+      const u=$('#lk-user');if(u)u.focus();
+      $('#lk-skip').addEventListener('click',()=>{saveLS('ft_skip','1');root.remove();document.body.classList.remove('locked');resolve(null)});
+      $('#lock-form').addEventListener('submit',run(async()=>{
+        const user=$('#lk-user').value.trim(),pw=$('#lk-pw').value;
+        if(!user){err('Enter a username.');return}
+        if(pw.length<8){err('Use at least 8 characters for the password.');return}
+        if(pw!==$('#lk-pw2').value){err('The two passwords do not match.');return}
+        this.dek=await this.newDek();this.rec={v:2,iters:this.iters};
+        this.rec.pw=await this.wrapPw(user,pw);const code=this.genCode();this.rec.rc=await this.wrapRc(code);
+        const data=hasOld?old:{members:[],holdings:[],assets:[],snaps:[],settings:{}};
+        saveLS('fintrack_enc_v1',await this.seal(data));
+        try{localStorage.removeItem('fintrack_v1')}catch(x){}
+        codeScreen(code,()=>finish(this.dek,hasOld?old:null));
+      },lbl(true)));
+    };
+    const renderLogin=()=>{
+      root.innerHTML=`<div class="panel box">${head}<div><h2 style="font-size:18px">Welcome back</h2><div class="muted" style="font-size:12.5px;margin-top:4px">Enter your username and password to open your dashboard.</div></div>
+        <form id="lock-form" autocomplete="on"><label class="fld"><span>Username</span><input type="text" id="lk-user" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+        <label class="fld"><span>Password</span><input type="password" id="lk-pw" autocomplete="current-password" required></label>
+        <div class="err" id="lk-err" role="alert"></div>
+        <button class="btn btn-primary" type="submit" id="lk-go">Open dashboard</button></form>
+        <div id="lk-forgot"><button class="linkbtn" type="button" id="lk-forgot-btn">Forgot your password?</button></div></div>`;
+      const u=$('#lk-user');if(u)u.focus();
+      $('#lk-forgot-btn').addEventListener('click',renderForgot);
+      $('#lock-form').addEventListener('submit',run(async()=>{
+        const user=$('#lk-user').value.trim(),pw=$('#lk-pw').value;
+        if(!user){err('Enter a username.');return}
+        if(this.fails>0)await sleep(Math.min(this.fails*700,4000));
+        if(rec.pw){
+          this.iters=rec.iters||this.iters;
+          let dek,data;try{const k=await this.kek(this.pwSecret(user,pw),this.unb64(rec.pw.salt),this.iters);dek=await this.unwrap(k,rec.pw);data=await this.open(rec,dek)}catch(x){this.fails++;err('Incorrect username or password.');return}
+          this.rec={v:2,iters:this.iters,pw:rec.pw,rc:rec.rc};finish(dek,data);
+        }else{ /* login made by the first version: open it, then add a recovery code */
+          let data;try{const k=await this.kek(this.pwSecret(user,pw),this.unb64(rec.salt),rec.iters||this.iters);data=await this.open(rec,k)}catch(x){this.fails++;err('Incorrect username or password.');return}
+          this.iters=rec.iters||this.iters;this.dek=await this.newDek();this.rec={v:2,iters:this.iters};
+          this.rec.pw=await this.wrapPw(user,pw);const code=this.genCode();this.rec.rc=await this.wrapRc(code);
+          saveLS('fintrack_enc_v1',await this.seal(data));codeScreen(code,()=>finish(this.dek,data));
+        }
+      },lbl(false)));
+    };
+    const renderForgot=()=>{
+      if(!rec.rc){root.innerHTML=`<div class="panel box">${head}<div><h2 style="font-size:18px">Reset your login</h2><div class="muted" style="font-size:12.5px;margin-top:4px">This login was made before recovery codes existed, so it cannot be reset. You can erase the data on this device and create a new login.</div></div><div id="lk-forgot"></div><button class="linkbtn" type="button" id="lk-back">Back to sign in</button></div>`;
+        eraseBlock();$('#lk-cancel').addEventListener('click',renderLogin);$('#lk-back').addEventListener('click',renderLogin);return}
+      root.innerHTML=`<div class="panel box">${head}<div><h2 style="font-size:18px">Reset your password</h2><div class="muted" style="font-size:12.5px;margin-top:4px">Enter the recovery code you saved when you created your login, then choose a new username and password. Your data stays as it is.</div></div>
+        <form id="lock-form" autocomplete="off"><label class="fld"><span>Recovery code</span><input type="text" id="fg-code" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" required></label>
+        <label class="fld"><span>New username</span><input type="text" id="lk-user" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+        <label class="fld"><span>New password</span><input type="password" id="lk-pw" autocomplete="new-password" required></label>
+        <label class="fld"><span>Confirm new password</span><input type="password" id="lk-pw2" autocomplete="new-password" required><small>At least 8 characters.</small></label>
+        <div class="err" id="lk-err" role="alert"></div>
+        <button class="btn btn-primary" type="submit" id="lk-go">Reset and open</button></form>
+        <div id="lk-forgot" style="display:flex;flex-direction:column;gap:8px;align-items:flex-start"><button class="linkbtn" type="button" id="lk-back">Back to sign in</button><button class="linkbtn" type="button" id="lk-nocode">I do not have my recovery code</button></div></div>`;
+      $('#fg-code').focus();$('#lk-back').addEventListener('click',renderLogin);$('#lk-nocode').addEventListener('click',eraseBlock);
+      $('#lock-form').addEventListener('submit',run(async()=>{
+        const code=$('#fg-code').value,user=$('#lk-user').value.trim(),pw=$('#lk-pw').value;
+        if(!user){err('Enter a username.');return}
+        if(pw.length<8){err('Use at least 8 characters for the password.');return}
+        if(pw!==$('#lk-pw2').value){err('The two passwords do not match.');return}
+        if(this.fails>0)await sleep(Math.min(this.fails*700,4000));
+        this.iters=rec.iters||this.iters;
+        let dek,data;try{const k=await this.kek(this.rcSecret(code),this.unb64(rec.rc.salt),this.iters);dek=await this.unwrap(k,rec.rc);data=await this.open(rec,dek)}catch(x){this.fails++;err('That recovery code does not match.');return}
+        this.dek=dek;this.rec={v:2,iters:this.iters,rc:rec.rc};this.rec.pw=await this.wrapPw(user,pw);
+        saveLS('fintrack_enc_v1',await this.seal(data));finish(dek,data);setTimeout(()=>toast('Password reset. Your recovery code still works.'),300);
+      },'Reset and open'));
+    };
+    if(rec)renderLogin();else renderSetup();
   }
 };
+function blobSave(name,text,type){try{const u=URL.createObjectURL(new Blob([text],{type:type||'text/plain'})),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);return true}catch(e){return false}}
 /* ============================== live prices (downloadable copy only) ============================== */
 /* Mutual funds: mfapi.in (AMFI NAV). Gold and silver: gold-api.com spot in USD per troy ounce, converted with the USD to INR rate.
    Stocks, ETFs, US shares, bonds: Yahoo Finance chart data, reached through a relay because Yahoo does not allow direct calls from web pages. */
@@ -695,6 +765,14 @@ function vTransactions(){
 }
 
 /* ---------- settings ---------- */
+function authPanel(){
+  if(S.mode!=='local')return '';
+  if(!Auth.ok())return '';
+  if(Auth.active)return `<section class="panel"><h2>Sign-in</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Your data is locked with your username and password on this device. Forgot your password? Use your recovery code on the sign-in screen.</div>
+    <div class="actions"><button class="btn btn-ghost" data-act="change-login">Change username or password</button><button class="btn btn-ghost" data-act="new-recovery">Get a new recovery code</button><button class="btn btn-ghost" data-act="lock-now">Lock now</button></div></section>`;
+  return `<section class="panel"><h2>Sign-in</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">You skipped sign-in, so anyone who opens this page in this browser can see your data. Create a login to lock it with a username and password. Everything you have entered so far is kept.</div>
+    <div class="actions"><button class="btn btn-primary" data-act="make-login">Create a login</button></div></section>`;
+}
 function livePanel(){
   const st=S.settings;
   if(S.mode!=='local')return `<section class="panel"><h2>Live prices</h2><p class="soft" style="margin:8px 0 0">Automatic prices run in the downloadable copy of this page. In this page, ask Claude to refresh your prices whenever you like, or update them from the Import page.</p></section>`;
@@ -721,9 +799,10 @@ function vSettings(){
     <label class="fld"><span>Silver, pure ₹ per gram</span><input type="number" step="0.01" id="s-silver" value="${fin(st.silver)?st.silver:''}"></label></div>
     <div class="actions" style="margin-top:14px"><button class="btn btn-primary" data-act="save-rates">Save rates</button></div></section>
   ${livePanel()}
+  ${authPanel()}
   <section class="panel"><h2>Export and backup</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Download your data as files you can open in Excel.</div>
     <div class="actions"><button class="btn btn-ghost" data-act="export" data-k="holdings">Holdings (CSV)</button><button class="btn btn-ghost" data-act="export" data-k="txns">Transactions (CSV)</button><button class="btn btn-ghost" data-act="export" data-k="assets">Other assets (CSV)</button><button class="btn btn-ghost" data-act="export" data-k="json">Full backup (JSON)</button></div></section>
-  <section class="panel"><h2>Where your data lives</h2><p class="soft" style="margin:8px 0 0">${S.mode==='db'?'Your holdings, transactions and assets are saved to this page in your Claude account, so they are there on every device you open it on. Anyone you share the page with can see them, so share it only with family you trust.':(Auth.active?'Everything is saved in this browser only and locked with your username and password, so it will not appear on other devices. The data is encrypted with your password. If you forget it, the data cannot be recovered.':'This page could not reach account storage, so everything is saved in this browser only. It will not appear on other devices.')}</p></section>
+  <section class="panel"><h2>Where your data lives</h2><p class="soft" style="margin:8px 0 0">${S.mode==='db'?'Your holdings, transactions and assets are saved to this page in your Claude account, so they are there on every device you open it on. Anyone you share the page with can see them, so share it only with family you trust.':(Auth.active?'Everything is saved in this browser only and locked with your username and password, so it will not appear on other devices. The data is encrypted. If you forget your password, reset it with your recovery code.':'This page could not reach account storage, so everything is saved in this browser only. It will not appear on other devices.')}</p></section>
   <section class="panel"><h2>Start over</h2><p class="soft" style="margin:8px 0 12px">Removes every holding, transaction, asset and saved net worth point. Family members stay.</p><div id="reset-box"><button class="btn btn-danger" data-act="reset-ask">Delete all data</button></div></section></div>`;
 }
 
@@ -1127,7 +1206,9 @@ async function runImport(){
 const csvq=v=>{v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
 const toCSV=(head,rows)=>[head.map(csvq).join(',')].concat(rows.map(r=>r.map(csvq).join(','))).join('\n');
 async function saveFile(name,data){
-  try{const d=await window.claude.use('downloads');if(!d)throw 0;await d.save({filename:name,data});toast('Saved '+name)}
+  let d=null;try{d=window.claude&&typeof window.claude.use==='function'?await window.claude.use('downloads'):null}catch(e){d=null}
+  if(!d){if(blobSave(name,data,/\.json$/i.test(name)?'application/json':/\.csv$/i.test(name)?'text/csv':'text/plain'))toast('Saved '+name);else toast('Downloads are not available here.',true);return}
+  try{await d.save({filename:name,data});toast('Saved '+name)}
   catch(e){if(e&&e.code==='declined')return;toast('Downloads are not available in this view.',true)}
 }
 function exportData(k){
@@ -1189,6 +1270,22 @@ document.addEventListener('click',e=>{
     case 'imp-go':runImport();break;
     case 'template':template(t.dataset.k);break;
     case 'export':exportData(t.dataset.k);break;
+    case 'lock-now':location.reload();break;
+    case 'make-login':try{localStorage.removeItem('ft_skip')}catch(e){}location.reload();break;
+    case 'change-login':openModal(`${mhead('Change username or password','Choose the new details. Your recovery code stays the same.')}
+      <div class="form-grid"><label class="fld"><span>New username</span><input type="text" id="cp-user" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+      <label class="fld"><span>New password</span><input type="password" id="cp-pw" autocomplete="new-password"></label>
+      <label class="fld"><span>Confirm password</span><input type="password" id="cp-pw2" autocomplete="new-password"><small>At least 8 characters.</small></label></div>
+      <div class="err" id="cp-err" role="alert" style="color:#ff8497;font-size:13px;min-height:18px;margin-top:6px"></div>
+      <div class="actions" style="margin-top:10px"><button class="btn btn-primary" data-act="cp-go">Save</button></div>`);break;
+    case 'cp-go':{const u=val('cp-user'),p=$('#cp-pw').value,e=m=>{$('#cp-err').textContent=m};
+      if(!u){e('Enter a username.');break}if(p.length<8){e('Use at least 8 characters for the password.');break}if(p!==$('#cp-pw2').value){e('The two passwords do not match.');break}
+      Auth.changeLogin(u,p).then(()=>{closeModal();toast('Login updated')}).catch(()=>e('Could not update. Please try again.'));break}
+    case 'new-recovery':Auth.newRecovery().then(code=>{openModal(`${mhead('Your new recovery code','The old code no longer works. Keep this one safe.')}
+      <div class="panel" style="padding:14px;text-align:center;margin-bottom:10px"><div id="rc-code" style="font-family:var(--font-mono);font-size:17px;letter-spacing:.06em;word-break:break-all;user-select:all">${code}</div></div>
+      <div class="actions"><button class="btn btn-ghost" data-act="rc-copy" data-code="${code}">Copy</button><button class="btn btn-ghost" data-act="rc-dl" data-code="${code}">Download</button></div>`)}).catch(()=>toast('Could not make a new code',true));break;
+    case 'rc-copy':navigator.clipboard&&navigator.clipboard.writeText(t.dataset.code).then(()=>toast('Copied')).catch(()=>toast('Select the code and copy it',true));break;
+    case 'rc-dl':blobSave('family-fintrack-recovery-code.txt',Auth.codeFile(t.dataset.code),'text/plain');break;
     case 'refresh':Live.refresh(true);break;
     case 'save-live':{const px=val('s-proxy').trim();if(px&&!/^https:\/\/.+\{url\}/.test(px)){toast('The relay address must start with https:// and contain {url}',true);break}
       Store.put('settings',{autoPrices:$('#s-auto').checked,metalAuto:$('#s-metalauto').checked,premium:numv('s-premium')||0,proxyUrl:px});toast('Live price settings saved');Live.route=null;break}
