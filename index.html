@@ -8,7 +8,6 @@
 <title>Family FinTrack</title>
 <style>
 html{background:#05070d;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);-webkit-text-size-adjust:100%}
-
 /* Layout: sticky header (brand, family switcher, actions) over a pill nav, then one view at a time. Dark FolioDeck look carried over from the original app. */
 :root{
   --ink-950:#05070d; --ink-900:#080c15; --ink-850:#0b111d; --ink-800:#0f1726; --ink-700:#162032; --ink-600:#1e2b41;
@@ -151,6 +150,7 @@ body.locked .wrap{visibility:hidden}
 .lock .box{width:100%;max-width:410px;display:flex;flex-direction:column;gap:14px}
 .lock form{display:flex;flex-direction:column;gap:12px}
 .lock .err{color:#ff8497;font-size:13px;min-height:18px}
+@keyframes ftspin{to{transform:rotate(360deg)}}#btn-refresh.busy svg{animation:ftspin .9s linear infinite}
 .linkbtn{background:none;border:0;padding:0;color:var(--mist-300);text-decoration:underline;cursor:pointer;font-size:12.5px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -164,6 +164,7 @@ body.locked .wrap{visibility:hidden}
       <div class="actions">
         <span class="status" id="status"></span>
         <button class="btn btn-ghost icon-btn" id="btn-mask" title="Hide amounts" aria-label="Hide amounts" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button class="btn btn-ghost icon-btn" id="btn-refresh" title="Refresh prices" aria-label="Refresh prices" data-act="refresh" hidden><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></button>
         <button class="btn btn-ghost icon-btn" id="btn-lock" title="Lock" aria-label="Lock and sign out" hidden><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
         <button class="btn btn-ghost" data-act="go" data-v="import">Import</button>
         <button class="btn btn-primary" data-act="add-holding">+ Add</button>
@@ -208,7 +209,7 @@ const ASSET_CATS=[
   {k:'Real Estate',cls:'Real Estate',hint:'Flat, plot, land, commercial'},{k:'Retirement',cls:'Retirement',hint:'PPF, EPF, NPS'},
   {k:'Cash & Deposits',cls:'Cash & Deposits',hint:'Savings, FD, RD'},{k:'Other',cls:'Other',hint:'Vehicle, business stake, lent money'},
   {k:'Liability',cls:null,hint:'Home loan, car loan, credit card'}];
-const TYPE_LABEL={stock:'Stock',etf:'ETF',mf:'Mutual fund',us:'US stock'};
+const TYPE_LABEL={stock:'Stock',etf:'ETF',mf:'Mutual fund',us:'US stock',bond:'Bond'};
 const PALETTE=['#7c5cff','#21d4fd','#16c784','#f0b90b','#ff8a5b','#f472b6','#38bdf8','#c084fc'];
 
 /* ============================== state & storage ============================== */
@@ -280,6 +281,97 @@ const Auth={key:null,salt:null,iters:200000,active:false,t:0,fails:0,
       $('#lk-wipe').addEventListener('click',()=>{try{localStorage.removeItem('fintrack_enc_v1');localStorage.removeItem('fintrack_v1')}catch(x){}location.reload()});
       $('#lk-cancel').addEventListener('click',()=>{root.remove();this.screen(rec,old,resolve)});
     });
+  }
+};
+/* ============================== live prices (downloadable copy only) ============================== */
+/* Mutual funds: mfapi.in (AMFI NAV). Gold and silver: gold-api.com spot in USD per troy ounce, converted with the USD to INR rate.
+   Stocks, ETFs, US shares, bonds: Yahoo Finance chart data, reached through a relay because Yahoo does not allow direct calls from web pages. */
+const Live={busy:false,route:null,timer:0,
+  async fj(url,ms){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms||9000);try{const r=await fetch(url,{signal:c.signal,cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(t)}},
+  routes(){const u=String(S.settings.proxyUrl||'').trim(),r=[{n:'direct',f:x=>x}];
+    if(/\{url\}/.test(u))r.unshift({n:'custom',f:x=>u.replace('{url}',encodeURIComponent(x))});
+    r.push({n:'corsproxy',f:x=>'https://corsproxy.io/?url='+encodeURIComponent(x)},{n:'allorigins',f:x=>'https://api.allorigins.win/raw?url='+encodeURIComponent(x)});return r},
+  async yahoo(sym){
+    const url='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym)+'?range=5d&interval=1d';
+    const rs=this.routes(),first=rs.find(r=>r.n===this.route),order=first?[first,...rs.filter(r=>r!==first)]:rs;let last;
+    for(const r of order){
+      try{const j=await this.fj(r.f(url),10000);const res=j&&j.chart&&j.chart.result&&j.chart.result[0];
+        if(!res||!res.meta){if(j&&j.chart&&j.chart.error)throw new Error('notfound');throw new Error('bad reply')}
+        this.route=r.n;return res}
+      catch(e){last=e;if(e.message==='notfound'||/HTTP 404/.test(e.message))throw new Error('notfound')}
+    }
+    throw last||new Error('unreachable')},
+  quote(res){const m=res.meta,q=res.indicators&&res.indicators.quote&&res.indicators.quote[0],cl=((q&&q.close)||[]).filter(x=>x!=null&&isFinite(x));
+    const price=m.regularMarketPrice!=null?m.regularMarketPrice:cl[cl.length-1];if(!(price>0))throw new Error('no price');
+    let prev=cl.length>=2?cl[cl.length-2]:m.previousClose;if(!(prev>0))prev=null;
+    return {price,chg:prev?(price-prev)/prev*100:null}},
+  ycands(h){if(h.ysym)return [h.ysym];const s=String(h.sym||'').trim();if(!s||/^(UNIDENTIFIED|MUTF)/i.test(s))return [];
+    if(h.type==='us')return [s.replace(/\./g,'-')];if(/^\d+$/.test(s))return [s+'.BO'];return [s+'.NS',s+'.BO']},
+  toks(n){return String(n||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/).filter(w=>w&&!/^(fund|plan|option|scheme|the|of|and)$/.test(w))},
+  async mfCode(h){
+    if(h.code)return String(h.code);
+    const mine=this.toks(h.name),wantDirect=mine.includes('direct'),wantIdcw=mine.some(w=>/idcw|dividend|bonus/.test(w)),core=mine.filter(w=>!/^(direct|growth|regular|idcw|dividend|bonus)$/.test(w));
+    if(!core.length)throw new Error('no name');
+    for(const n of [4,3]){
+      const q=String(h.name).replace(/[-()]/g,' ').split(/\s+/).filter(Boolean).slice(0,n).join(' ');
+      let list;try{list=await this.fj('https://api.mfapi.in/mf/search?q='+encodeURIComponent(q))}catch(e){continue}
+      let best=null,bs=0;
+      for(const c of (list||[])){const ct=this.toks(c.schemeName);if(!ct.length)continue;
+        const hit=core.filter(w=>ct.includes(w)).length/core.length;if(hit<0.8)continue;
+        let sc=hit;const d=ct.includes('direct'),g=ct.includes('growth'),i=ct.some(w=>/idcw|dividend|bonus/.test(w));
+        if(d===wantDirect)sc+=1;if(g&&!wantIdcw)sc+=1;if(i&&!wantIdcw)sc-=2;if(wantIdcw&&i)sc+=1;
+        sc-=Math.max(0,ct.length-mine.length)*0.02;
+        if(sc>bs){bs=sc;best=c}}
+      if(best&&bs>=2)return String(best.schemeCode);
+    }
+    throw new Error('fund not matched');
+  },
+  async mf(h){const code=await this.mfCode(h);const j=await this.fj('https://api.mfapi.in/mf/'+code+'/latest',10000);
+    const d=j&&j.data&&j.data[0],nav=d&&parseFloat(d.nav);if(!(nav>0))throw new Error('no NAV');
+    const m=/^(\d{2})-(\d{2})-(\d{4})$/.exec(d.date||''),iso=m?m[3]+'-'+m[2]+'-'+m[1]:null;
+    let chg=h.chg||0;if(fin(h.price)&&h.price>0&&iso&&h.navDate&&iso>h.navDate)chg=(nav-h.price)/h.price*100;
+    return {price:nav,chg,code,navDate:iso}},
+  async usdinr(){try{const j=await this.fj('https://open.er-api.com/v6/latest/USD');const v=j&&j.rates&&j.rates.INR;if(v>0)return v}catch(e){}
+    return this.quote(await this.yahoo('USDINR=X')).price},
+  async metal(code,y){try{const j=await this.fj('https://api.gold-api.com/price/'+code);if(j&&j.price>0)return j.price}catch(e){}
+    return this.quote(await this.yahoo(y)).price},
+  setBusy(b){this.busy=b;const el=$('#btn-refresh');if(el)el.classList.toggle('busy',b)},
+  async refresh(manual,only){
+    if(this.busy||S.mode!=='local')return;
+    if(typeof navigator!=='undefined'&&navigator.onLine===false){if(manual)toast('You are offline',true);return}
+    this.setBusy(true);const rep={ok:0,fails:[],fx:false,metals:false};const st={};
+    try{
+      let fx=null;try{fx=await this.usdinr();rep.fx=true}catch(e){}
+      if(fx>0){st.fx=+(+fx).toFixed(4);st.fxAt=today()}else fx=S.settings.fx;
+      if(!only&&S.settings.metalAuto!==false&&fx>0){
+        try{const [g,sv]=await Promise.all([this.metal('XAU','GC=F'),this.metal('XAG','SI=F')]);const k=fx/31.1034768*(1+(+S.settings.premium||0)/100);
+          st.gold=Math.round(g*k*100)/100;st.silver=Math.round(sv*k*100)/100;st.metalAt=new Date().toISOString();rep.metals=true}catch(e){}
+      }
+      const todo=S.holdings.filter(h=>(!only||only.includes(h.id))&&calcPos(h).qty>0);
+      const out=new Map(),q=todo.slice();
+      const worker=async()=>{while(q.length){const h=q.shift();
+        try{
+          if(h.type==='mf'){const r=await this.mf(h);out.set(h.id,{price:r.price,chg:r.chg,code:r.code,navDate:r.navDate})}
+          else{const cs=this.ycands(h);if(!cs.length)throw new Error('no symbol');let done=false,err;
+            for(const c of cs){try{const r=this.quote(await this.yahoo(c));out.set(h.id,{price:r.price,chg:r.chg==null?(h.chg||0):r.chg,ysym:c});done=true;break}catch(e){err=e;if(e.message!=='notfound')break}}
+            if(!done)throw err||new Error('not found')}
+          rep.ok++;
+        }catch(e){rep.fails.push({n:h.name||h.sym,s:h.sym,w:e.message==='notfound'?'not found':e.message})}
+      }};
+      await Promise.all([worker(),worker(),worker(),worker()]);
+      const now=Date.now(),day=today();
+      S.holdings=S.holdings.map(h=>out.has(h.id)?{...h,...out.get(h.id),priceAt:day,pxTs:now}:h);
+      if(!only)st.lastRefresh={at:new Date().toISOString(),ok:rep.ok,total:todo.length,fx:rep.fx,metals:rep.metals,route:this.route||null,fails:rep.fails.slice(0,40)};
+      Store.put('settings',st);
+      if(manual)toast(todo.length?`Prices updated: ${rep.ok} of ${todo.length}`+(rep.fails.length?`, ${rep.fails.length} not found`:''):'Prices updated',rep.ok===0&&todo.length>0);
+    }catch(e){if(manual)toast('Could not refresh prices',true)}
+    finally{this.setBusy(false);scheduleRender()}
+  },
+  stale(){const t=S.settings.lastRefresh&&Date.parse(S.settings.lastRefresh.at);return !t||Date.now()-t>10*60*1000},
+  start(){
+    if(S.mode!=='local')return;const b=$('#btn-refresh');if(b)b.hidden=false;
+    const tick=()=>{if(S.settings.autoPrices!==false&&document.visibilityState==='visible'&&this.stale())this.refresh(false)};
+    setTimeout(tick,600);setInterval(tick,60000);document.addEventListener('visibilitychange',tick);
   }
 };
 const Store={db:null,chains:new Map(),
@@ -558,7 +650,7 @@ function vAssets(){
   const l=loadingOrEmpty();if(l)return l;
   const as=S.assets.filter(a=>inScope(a.member,S.scope)).map(a=>({a,...assetValue(a)}));
   const metals=`<section class="panel"><div class="sec-head"><div><h2>Rates for gold and silver</h2><div class="muted" style="font-size:12px;margin-top:2px">Used to value anything entered in grams. Rate per gram of pure metal.</div></div><button class="btn btn-ghost btn-sm" data-act="go" data-v="settings">Change</button></div>
-    <div class="actions"><span class="chip">Gold (24K) ${fin(S.settings.gold)?'₹'+INR0.format(S.settings.gold)+'/g':'not set'}</span><span class="chip">Silver (pure) ${fin(S.settings.silver)?'₹'+INR2.format(S.settings.silver)+'/g':'not set'}</span></div></section>`;
+    <div class="actions">${[['24K',24],['22K',22],['18K',18]].map(([k,n])=>`<span class="chip">Gold ${k} ${fin(S.settings.gold)?'₹'+INR0.format(S.settings.gold*n/24)+'/g':'not set'}</span>`).join('')}<span class="chip">Silver (pure) ${fin(S.settings.silver)?'₹'+INR2.format(S.settings.silver)+'/g':'not set'}</span></div></section>`;
   const groups=ASSET_CATS.map(cat=>{
     const items=as.filter(x=>x.a.cat===cat.k);
     return `<section class="panel"><div class="sec-head"><div><h2>${esc(cat.k==='Liability'?'Loans and liabilities':cat.k)}</h2><div class="muted" style="font-size:12px;margin-top:2px">${esc(cat.hint)}</div></div><div class="actions"><b class="mv ${cat.k==='Liability'?'loss':''}">${compact(items.reduce((s,x)=>s+x.v,0))}</b><button class="btn btn-ghost btn-sm" data-act="add-asset" data-cat="${esc(cat.k)}">+ Add</button></div></div>
@@ -603,6 +695,20 @@ function vTransactions(){
 }
 
 /* ---------- settings ---------- */
+function livePanel(){
+  const st=S.settings;
+  if(S.mode!=='local')return `<section class="panel"><h2>Live prices</h2><p class="soft" style="margin:8px 0 0">Automatic prices run in the downloadable copy of this page. In this page, ask Claude to refresh your prices whenever you like, or update them from the Import page.</p></section>`;
+  const lr=st.lastRefresh,fails=(lr&&lr.fails)||[];
+  const when=lr?new Date(lr.at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):null;
+  return `<section class="panel"><h2>Live prices</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Mutual fund NAVs, stocks, ETFs, US shares and bonds, plus gold, silver and the dollar rate, refresh by themselves while this page is open.</div>
+   <label class="chip" style="cursor:pointer"><input type="checkbox" id="s-auto" ${st.autoPrices!==false?'checked':''}> Refresh automatically every 10 minutes</label>
+   <label class="chip" style="cursor:pointer;margin-top:8px"><input type="checkbox" id="s-metalauto" ${st.metalAuto!==false?'checked':''}> Set gold and silver rates automatically</label>
+   <div class="form-grid" style="margin-top:12px"><label class="fld"><span>Add to metal spot price (%)</span><input type="number" step="0.1" id="s-premium" value="${fin(st.premium)?st.premium:0}"><small>Indian shop prices run higher than world prices because of import duty and GST. Raise this until the rate matches your jeweller.</small></label>
+   <label class="fld"><span>Own price relay (optional)</span><input type="text" id="s-proxy" placeholder="https://your-relay.example/?url={url}" value="${esc(st.proxyUrl||'')}" autocomplete="off" autocapitalize="none" spellcheck="false"><small>Only needed if the built in relays stop working.</small></label></div>
+   <div class="actions" style="margin-top:14px"><button class="btn btn-primary" data-act="save-live">Save</button><button class="btn btn-ghost" data-act="refresh">Refresh now</button></div>
+   <div class="muted" style="font-size:12.5px;margin-top:12px">${lr?`Last refresh ${esc(when)}. ${lr.ok} of ${lr.total} holdings updated${lr.fx?', dollar rate updated':', dollar rate not updated'}${lr.metals?', gold and silver updated':''}.`:'No refresh yet.'}</div>
+   ${fails.length?`<details style="margin-top:8px"><summary class="muted" style="font-size:12.5px;cursor:pointer">${fails.length} holding${fails.length>1?'s':''} could not be updated</summary><div class="soft" style="font-size:12.5px;margin-top:6px">${fails.map(f=>esc(f.n)+' ('+esc(f.w)+')').join('<br>')}<br><br>Open the holding and set its Yahoo symbol or fund code to fix it.</div></details>`:''}</section>`;
+}
 function vSettings(){
   const st=S.settings;
   return `<div class="grid g-2">
@@ -614,6 +720,7 @@ function vSettings(){
     <label class="fld"><span>Gold, 24K ₹ per gram</span><input type="number" step="0.01" id="s-gold" value="${fin(st.gold)?st.gold:''}"></label>
     <label class="fld"><span>Silver, pure ₹ per gram</span><input type="number" step="0.01" id="s-silver" value="${fin(st.silver)?st.silver:''}"></label></div>
     <div class="actions" style="margin-top:14px"><button class="btn btn-primary" data-act="save-rates">Save rates</button></div></section>
+  ${livePanel()}
   <section class="panel"><h2>Export and backup</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Download your data as files you can open in Excel.</div>
     <div class="actions"><button class="btn btn-ghost" data-act="export" data-k="holdings">Holdings (CSV)</button><button class="btn btn-ghost" data-act="export" data-k="txns">Transactions (CSV)</button><button class="btn btn-ghost" data-act="export" data-k="assets">Other assets (CSV)</button><button class="btn btn-ghost" data-act="export" data-k="json">Full backup (JSON)</button></div></section>
   <section class="panel"><h2>Where your data lives</h2><p class="soft" style="margin:8px 0 0">${S.mode==='db'?'Your holdings, transactions and assets are saved to this page in your Claude account, so they are there on every device you open it on. Anyone you share the page with can see them, so share it only with family you trust.':(Auth.active?'Everything is saved in this browser only and locked with your username and password, so it will not appear on other devices. The data is encrypted with your password. If you forget it, the data cannot be recovered.':'This page could not reach account storage, so everything is saved in this browser only. It will not appear on other devices.')}</p></section>
@@ -641,7 +748,7 @@ function addHoldingModal(pre){
   pre=pre||{};
   openModal(`${mhead('Add a holding','Stock, ETF, mutual fund or US stock.')}
   <div class="form-grid"><label class="fld"><span>Whose is it</span><select id="ah-mem">${memberOptions(pre.member||defaultMember())}</select></label>
-   <label class="fld"><span>Type</span><select id="ah-type"><option value="stock">Indian stock</option><option value="etf">ETF</option><option value="mf">Mutual fund</option><option value="us">US stock</option></select></label></div>
+   <label class="fld"><span>Type</span><select id="ah-type"><option value="stock">Indian stock</option><option value="etf">ETF</option><option value="mf">Mutual fund</option><option value="us">US stock</option><option value="bond">Bond / G-Sec / SGB</option></select></label></div>
   <div class="form-grid"><label class="fld"><span>Symbol</span><input type="text" id="ah-sym" placeholder="RELIANCE" autocomplete="off"></label>
    <label class="fld"><span>Name</span><input type="text" id="ah-name" placeholder="Reliance Industries Ltd"></label>
    <label class="fld"><span>Current price (<span id="ah-ccy">₹</span>)</span><input type="number" step="any" id="ah-price"></label></div>
@@ -680,6 +787,7 @@ function holdingModal(id){
    ${mini('Quantity',qtyf(p.qty))}${mini('Average buy',p.avg!=null?MM(p.avg,h.ccy):'<span class="chip warn">unknown</span>')}${mini('Price',fin(h.price)?MM(h.price,h.ccy):'—')}${mini('Value',M(e.value))}${mini('Unrealised P&L',e.pnl!=null?`<span class="${cls_(e.pnl)}">${M(e.pnl)} (${pctf(e.pnlPct)})</span>`:'—')}${mini('Realised P&L',`<span class="${cls_(e.realized)}">${M(e.realized)}</span>`)}</div>
   ${p.warn.length?`<div class="banner">${esc(p.warn[0])}. Check the transactions below.</div>`:''}${p.partial?`<div class="banner info">Some of these units have no buy price, so the average and P&L cover only the units that do.</div>`:''}
   <div class="form-grid" style="align-items:end"><label class="fld"><span>Current price (${h.ccy==='USD'?'$':'₹'})</span><input type="number" step="any" id="hd-price" value="${fin(h.price)?h.price:''}"></label><div><button class="btn btn-ghost" data-act="hd-price" data-id="${esc(h.id)}">Update price</button></div></div>
+  ${S.mode==='local'?`<div class="form-grid" style="align-items:end;margin-top:8px"><label class="fld"><span>${h.type==='mf'?'Fund code (AMFI) for live NAV':'Yahoo symbol for live price'}</span><input type="text" id="hd-src" value="${esc(h.type==='mf'?(h.code||''):(h.ysym||''))}" placeholder="${h.type==='mf'?'Found automatically':esc(h.type==='us'?h.sym:h.sym+'.NS')}" autocomplete="off" autocapitalize="none" spellcheck="false"></label><div><button class="btn btn-ghost" data-act="hd-src" data-id="${esc(h.id)}">Save and refresh</button></div></div>`:''}
   <div><h3 style="margin-bottom:8px">Add a transaction</h3>
    <div class="seg" role="group" aria-label="Buy or sell"><button type="button" data-act="hd-side" data-s="buy" aria-pressed="true">Buy</button><button type="button" data-act="hd-side" data-s="sell" aria-pressed="false">Sell</button></div>
    <div class="form-grid" style="margin-top:10px"><label class="fld"><span>Date</span><input type="date" id="hd-date" value="${today()}"></label><label class="fld"><span>Quantity</span><input type="number" step="any" id="hd-q"></label><label class="fld"><span>Price</span><input type="number" step="any" id="hd-p" value="${fin(h.price)?h.price:''}"></label><label class="fld"><span>Fees</span><input type="number" step="any" id="hd-fee"></label></div>
@@ -760,6 +868,7 @@ function normSym(s){
 }
 function inferClass(sym,name,sector,type,ccy){
   const s=(sym+' '+(name||'')).toLowerCase();
+  if(type==='bond')return /gold|sgb/.test(s)?'Gold':'Debt';
   if(/gold/.test(s))return 'Gold';if(/silver/.test(s))return 'Silver';
   if(/liquid/.test(s))return 'Debt';
   if(type==='us'||ccy==='USD')return 'Equity (US)';
@@ -1080,6 +1189,11 @@ document.addEventListener('click',e=>{
     case 'imp-go':runImport();break;
     case 'template':template(t.dataset.k);break;
     case 'export':exportData(t.dataset.k);break;
+    case 'refresh':Live.refresh(true);break;
+    case 'save-live':{const px=val('s-proxy').trim();if(px&&!/^https:\/\/.+\{url\}/.test(px)){toast('The relay address must start with https:// and contain {url}',true);break}
+      Store.put('settings',{autoPrices:$('#s-auto').checked,metalAuto:$('#s-metalauto').checked,premium:numv('s-premium')||0,proxyUrl:px});toast('Live price settings saved');Live.route=null;break}
+    case 'hd-src':{const h=S.holdings.find(x=>x.id===t.dataset.id);if(!h)break;const v=val('hd-src').trim();
+      Store.put('holdings',h.type==='mf'?{...h,code:v||undefined}:{...h,ysym:v||undefined});toast('Saved. Fetching the price');Live.refresh(true,[h.id]);break}
     case 'save-family':{let n=val('s-family').replace(/\s+/g,' ').trim().replace(/\s+family$/i,'');Store.put('settings',{familyName:n});toast(n?'Family name saved':'Family name cleared');break}
     case 'save-rates':{const fx=numv('s-fx'),g=numv('s-gold'),s=numv('s-silver');Store.put('settings',{fx:fx>0?fx:S.settings.fx,gold:g,silver:s});toast('Rates saved');break}
     case 'reset-ask':$('#reset-box').innerHTML=`<button class="btn btn-danger" data-act="reset-go">Yes, delete everything</button> <button class="btn btn-ghost" data-act="go" data-v="settings">Cancel</button>`;break;
@@ -1116,7 +1230,7 @@ $('#btn-mask').addEventListener('click',e=>{const on=document.body.classList.tog
   const sc=loadLS('ft_scope');if(sc)S.scope=sc;
   if(loadLS('ft_mask')==='1'){document.body.classList.add('mask');$('#btn-mask').setAttribute('aria-pressed','true')}
   render();
-  Store.init();
+  Store.init().then(()=>Live.start());
 })();
 </script>
 
