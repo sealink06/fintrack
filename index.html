@@ -97,7 +97,7 @@ tr.row-click:hover td{background:rgba(124,92,255,.07)}
 td .nm{display:block;font-weight:600;color:#fff;max-width:300px;overflow:hidden;text-overflow:ellipsis}
 td .sy{display:block;font-size:11.5px;color:var(--mist-400);max-width:300px;overflow:hidden;text-overflow:ellipsis}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
-input[type=text],input[type=number],input[type=date],input[type=search],select,textarea{background:rgba(255,255,255,.04);border:1px solid var(--line-strong);border-radius:11px;padding:8px 11px;color:var(--mist-100);width:100%;min-width:0}
+input[type=text],input[type=password],input[type=number],input[type=date],input[type=search],select,textarea{background:rgba(255,255,255,.04);border:1px solid var(--line-strong);border-radius:11px;padding:8px 11px;color:var(--mist-100);width:100%;min-width:0}
 select option{background:var(--ink-800)}
 input::placeholder{color:var(--mist-400)}
 .fld{display:flex;flex-direction:column;gap:5px;min-width:0}
@@ -146,6 +146,12 @@ body.mask .mv{filter:blur(7px);user-select:none}
 .warnlist{margin:0;padding-left:18px;color:var(--mist-300);font-size:12.5px}
 @media(max-width:560px){.donut-wrap>svg{margin-inline:auto}.panel{padding:14px}}
 @media(max-width:640px){table.hl{min-width:0}.hl th:nth-child(2),.hl td:nth-child(2),.hl th:nth-child(3),.hl td:nth-child(3),.hl th:nth-child(4),.hl td:nth-child(4),.hl th:nth-child(6),.hl td:nth-child(6),.hl th:nth-child(8),.hl td:nth-child(8){display:none}.hl td .nm,.hl td .sy{max-width:44vw}.hl td,.hl th{padding-inline:7px}}
+body.locked .wrap{visibility:hidden}
+.lock{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:16px;background:radial-gradient(900px 520px at 12% -8%,rgba(124,92,255,.22),transparent 62%),radial-gradient(760px 460px at 92% 4%,rgba(33,212,253,.14),transparent 60%),#05070d;overflow:auto}
+.lock .box{width:100%;max-width:410px;display:flex;flex-direction:column;gap:14px}
+.lock form{display:flex;flex-direction:column;gap:12px}
+.lock .err{color:#ff8497;font-size:13px;min-height:18px}
+.linkbtn{background:none;border:0;padding:0;color:var(--mist-300);text-decoration:underline;cursor:pointer;font-size:12.5px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -154,10 +160,11 @@ body.mask .mv{filter:blur(7px);user-select:none}
 <div class="wrap">
   <header class="top"><div class="top-in">
     <div class="top-row">
-      <div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div><b>Family FinTrack</b><span>Family wealth cockpit</span></div></div>
+      <div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div><b>Family FinTrack</b><span id="brand-sub">Family wealth cockpit</span></div></div>
       <div class="actions">
         <span class="status" id="status"></span>
         <button class="btn btn-ghost icon-btn" id="btn-mask" title="Hide amounts" aria-label="Hide amounts" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button class="btn btn-ghost icon-btn" id="btn-lock" title="Lock" aria-label="Lock and sign out" hidden><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
         <button class="btn btn-ghost" data-act="go" data-v="import">Import</button>
         <button class="btn btn-primary" data-act="add-holding">+ Add</button>
       </div>
@@ -207,10 +214,78 @@ const PALETTE=['#7c5cff','#21d4fd','#16c784','#f0b90b','#ff8a5b','#f472b6','#38b
 /* ============================== state & storage ============================== */
 const S={members:[],holdings:[],assets:[],snaps:[],settings:{fx:95,gold:null,silver:null},ready:{},view:'dashboard',scope:'all',
   hf:{q:'',cls:'',type:'',missing:false,sold:false,sort:'value',dir:-1},tf:{q:'',type:'',limit:150},mode:'local',writeOk:true,snapDone:false};
+
+/* ============================== login lock (this device only) ============================== */
+/* Data is encrypted in the browser with a key made from username + password (PBKDF2 then AES-GCM). Nothing is sent anywhere. */
+const Auth={key:null,salt:null,iters:200000,active:false,t:0,fails:0,
+  ok(){try{if(!(window.crypto&&crypto.subtle&&window.TextEncoder))return false;localStorage.setItem('ft_probe','1');localStorage.removeItem('ft_probe');return true}catch(e){return false}},
+  b64(buf){let s='';const a=new Uint8Array(buf);for(let i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s)},
+  unb64(s){const b=atob(s),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a},
+  async derive(user,pw,salt,iters){const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(user.trim().toLowerCase()+'\u0000'+pw),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iters,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])},
+  async seal(obj){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},this.key,new TextEncoder().encode(JSON.stringify(obj)));return JSON.stringify({v:1,salt:this.b64(this.salt),iters:this.iters,iv:this.b64(iv),ct:this.b64(ct)})},
+  async open(rec,key){const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:this.unb64(rec.iv)},key,this.unb64(rec.ct));return JSON.parse(new TextDecoder().decode(pt))},
+  persist(){clearTimeout(this.t);this.t=setTimeout(async()=>{try{saveLS('fintrack_enc_v1',await this.seal(snapState()))}catch(e){}},60)},
+  async start(){
+    if(!this.ok())return null;
+    let rec=null;try{rec=JSON.parse(loadLS('fintrack_enc_v1')||'null')}catch(e){}
+    if(rec&&!(rec.salt&&rec.iv&&rec.ct))rec=null;
+    let old=null;try{old=JSON.parse(loadLS('fintrack_v1')||'null')}catch(e){}
+    return new Promise(resolve=>this.screen(rec,old,resolve));
+  },
+  screen(rec,old,resolve){
+    document.body.classList.add('locked');
+    const setup=!rec,root=document.createElement('div');root.className='lock';root.id='lock';
+    const hasOld=setup&&old&&((old.holdings||[]).length||(old.assets||[]).length);
+    root.innerHTML=`<div class="panel box"><div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div><b>Family FinTrack</b><span>Family wealth cockpit</span></div></div>
+      <div><h2 style="font-size:18px">${setup?'Create your login':'Welcome back'}</h2><div class="muted" style="font-size:12.5px;margin-top:4px">${setup?'Choose a username and password. Your data is locked with them on this device, and you will need them each time you open the dashboard.':'Enter your username and password to open your dashboard.'}</div></div>
+      ${hasOld?'<div class="banner info" style="padding:10px 12px;font-size:12.5px">Data already saved on this device will be locked with this login.</div>':''}
+      <form id="lock-form" autocomplete="on"><label class="fld"><span>Username</span><input type="text" id="lk-user" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label class="fld"><span>Password</span><input type="password" id="lk-pw" autocomplete="${setup?'new-password':'current-password'}" required></label>
+      ${setup?'<label class="fld"><span>Confirm password</span><input type="password" id="lk-pw2" autocomplete="new-password" required><small>At least 8 characters.</small></label>':''}
+      <div class="err" id="lk-err" role="alert"></div>
+      <button class="btn btn-primary" type="submit" id="lk-go">${setup?'Create login':'Open dashboard'}</button></form>
+      ${setup?'<div class="muted" style="font-size:12px">If you forget the password, your saved data cannot be recovered. There is no reset by email.</div>':'<div id="lk-forgot"><button class="linkbtn" type="button" id="lk-forgot-btn">Forgot your password?</button></div>'}</div>`;
+    document.body.appendChild(root);
+    const u=$('#lk-user');if(u)u.focus();
+    const err=m=>{$('#lk-err').textContent=m||''};
+    const finish=async(key,salt,data)=>{this.key=key;this.salt=salt;this.active=true;root.remove();document.body.classList.remove('locked');const b=$('#btn-lock');if(b)b.hidden=false;resolve({data})};
+    $('#lock-form').addEventListener('submit',async e=>{
+      e.preventDefault();err('');const user=$('#lk-user').value.trim(),pw=$('#lk-pw').value,go=$('#lk-go');
+      if(!user){err('Enter a username.');return}
+      go.disabled=true;go.textContent='Please wait…';
+      try{
+        if(setup){
+          if(pw.length<8){err('Use at least 8 characters for the password.');return}
+          if(pw!==$('#lk-pw2').value){err('The two passwords do not match.');return}
+          const salt=crypto.getRandomValues(new Uint8Array(16));
+          const key=await this.derive(user,pw,salt,this.iters);
+          this.key=key;this.salt=salt;
+          const data=hasOld?old:{members:[],holdings:[],assets:[],snaps:[],settings:{}};
+          saveLS('fintrack_enc_v1',await this.seal(data));
+          if(hasOld||old)try{localStorage.removeItem('fintrack_v1')}catch(x){}
+          await finish(key,salt,hasOld?old:null);
+        }else{
+          if(this.fails>0)await sleep(Math.min(this.fails*700,4000));
+          const key=await this.derive(user,pw,this.unb64(rec.salt),rec.iters||this.iters);
+          let data;try{data=await this.open(rec,key)}catch(x){this.fails++;err('Incorrect username or password.');return}
+          this.iters=rec.iters||this.iters;
+          await finish(key,this.unb64(rec.salt),data);
+        }
+      }catch(x){err('Something went wrong. Please try again.')}
+      finally{const g=$('#lk-go');if(g){g.disabled=false;g.textContent=setup?'Create login':'Open dashboard'}}
+    });
+    const fb=$('#lk-forgot-btn');
+    if(fb)fb.addEventListener('click',()=>{
+      $('#lk-forgot').innerHTML='<div class="muted" style="font-size:12.5px;margin-bottom:8px">This erases everything saved on this device and lets you create a new login. It cannot be undone.</div><button class="btn btn-danger btn-sm" type="button" id="lk-wipe">Erase data and start over</button> <button class="btn btn-ghost btn-sm" type="button" id="lk-cancel">Cancel</button>';
+      $('#lk-wipe').addEventListener('click',()=>{try{localStorage.removeItem('fintrack_enc_v1');localStorage.removeItem('fintrack_v1')}catch(x){}location.reload()});
+      $('#lk-cancel').addEventListener('click',()=>{root.remove();this.screen(rec,old,resolve)});
+    });
+  }
+};
 const Store={db:null,chains:new Map(),
   async init(){
     try{ if(window.claude&&typeof window.claude.use==='function') this.db=await window.claude.use('db'); }catch(e){this.db=null}
-    if(this.db){S.mode='db';this.subscribe()}else{S.mode='local';this.loadLocal()}
+    if(this.db){S.mode='db';this.subscribe()}else{S.mode='local';const a=await Auth.start();this.loadLocal(a&&a.data)}
     updateStatus();
   },
   subscribe(){
@@ -227,14 +302,14 @@ const Store={db:null,chains:new Map(),
       }catch(e){S.ready[c]=true}
     }
   },
-  loadLocal(){
-    let d=null;try{d=JSON.parse(loadLS('fintrack_v1')||'null')}catch(e){}
+  loadLocal(pre){
+    let d=pre||null;if(!d&&!Auth.active){try{d=JSON.parse(loadLS('fintrack_v1')||'null')}catch(e){}}
     if(d){for(const k of ['members','holdings','assets','snaps'])S[k]=d[k]||[];S.settings={...S.settings,...(d.settings||{})}}
     for(const c of ['members','holdings','assets','snaps','settings'])S.ready[c]=true;
     if(!S.members.length)this.ensureMember();
     scheduleRender();afterLoad();
   },
-  saveLocal(){saveLS('fintrack_v1',JSON.stringify({members:S.members,holdings:S.holdings,assets:S.assets,snaps:S.snaps,settings:S.settings}))},
+  saveLocal(){if(Auth.active)Auth.persist();else saveLS('fintrack_v1',JSON.stringify(snapState()))},
   ensureMember(){ if(S.members.length)return; const m={id:'m_'+uid(),name:'Me',relation:'Self',color:PALETTE[0],order:0}; this.put('members',m) },
   _chain(key,fn){
     const prev=this.chains.get(key)||Promise.resolve();
@@ -260,11 +335,12 @@ const Store={db:null,chains:new Map(),
     await Promise.all([worker(),worker(),worker()]);
   }
 };
+function snapState(){return {members:S.members,holdings:S.holdings,assets:S.assets,snaps:S.snaps,settings:S.settings}}
 function updateStatus(){
   const el=$('#status');if(!el)return;
   if(S.mode==='db'&&S.writeOk&&!S.dbError)el.innerHTML='<span class="dot" style="background:var(--gain)"></span>Saved to your account';
   else if(S.mode==='db')el.innerHTML='<span class="dot" style="background:var(--loss)"></span>Not saving. Check access';
-  else el.innerHTML='<span class="dot" style="background:var(--amber)"></span>Saved on this device only';
+  else el.innerHTML='<span class="dot" style="background:var(--amber)"></span>'+(Auth.active?'Locked, saved on this device only':'Saved on this device only');
 }
 let rafId=0,dirty=false;
 function scheduleRender(){ if(rafId)return; rafId=requestAnimationFrame(()=>{rafId=0;const a=document.activeElement;if(a&&$('#main').contains(a)&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)){dirty=true;return}render()}) }
@@ -363,7 +439,9 @@ function trendChart(points){
 
 /* ============================== views ============================== */
 const NAVS=[['dashboard','Dashboard'],['holdings','Holdings'],['assets','Other assets'],['family','Family'],['transactions','Transactions'],['import','Import'],['settings','Settings']];
+function brandSub(){const n=String(S.settings.familyName||'').trim();return n?n+' family wealth cockpit':'Family wealth cockpit'}
 function renderChrome(){
+  $('#brand-sub').textContent=brandSub();
   $('#scopes').innerHTML=`<button class="scope" data-act="scope" data-id="all" aria-pressed="${S.scope==='all'}">Whole family</button>`+S.members.map(m=>`<button class="scope" data-act="scope" data-id="${esc(m.id)}" aria-pressed="${S.scope===m.id}"><span class="dot" style="background:${esc(m.color)}"></span>${esc(m.name)}</button>`).join('');
   $('#nav').innerHTML=NAVS.map(([k,l])=>`<button class="pill" data-act="go" data-v="${k}" ${S.view===k?'aria-current="page"':''}>${l}</button>`).join('');
 }
@@ -528,6 +606,9 @@ function vTransactions(){
 function vSettings(){
   const st=S.settings;
   return `<div class="grid g-2">
+  <section class="panel"><h2>Family name</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Shown under the title at the top. Enter Johnson to see "Johnson family wealth cockpit". Leave it empty for just "Family wealth cockpit".</div>
+    <label class="fld"><span>Family name</span><input type="text" id="s-family" maxlength="30" placeholder="Johnson" value="${esc(st.familyName||'')}" autocomplete="off"></label>
+    <div class="actions" style="margin-top:14px"><button class="btn btn-primary" data-act="save-family">Save name</button></div></section>
   <section class="panel"><h2>Rates</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Used to value US holdings and gold or silver entered in grams.</div>
     <div class="form-grid"><label class="fld"><span>USD to INR</span><input type="number" step="0.0001" id="s-fx" value="${fin(st.fx)?st.fx:''}"></label>
     <label class="fld"><span>Gold, 24K ₹ per gram</span><input type="number" step="0.01" id="s-gold" value="${fin(st.gold)?st.gold:''}"></label>
@@ -535,7 +616,7 @@ function vSettings(){
     <div class="actions" style="margin-top:14px"><button class="btn btn-primary" data-act="save-rates">Save rates</button></div></section>
   <section class="panel"><h2>Export and backup</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Download your data as files you can open in Excel.</div>
     <div class="actions"><button class="btn btn-ghost" data-act="export" data-k="holdings">Holdings (CSV)</button><button class="btn btn-ghost" data-act="export" data-k="txns">Transactions (CSV)</button><button class="btn btn-ghost" data-act="export" data-k="assets">Other assets (CSV)</button><button class="btn btn-ghost" data-act="export" data-k="json">Full backup (JSON)</button></div></section>
-  <section class="panel"><h2>Where your data lives</h2><p class="soft" style="margin:8px 0 0">${S.mode==='db'?'Your holdings, transactions and assets are saved to this page in your Claude account, so they are there on every device you open it on. Anyone you share the page with can see them, so share it only with family you trust.':'This page could not reach account storage, so everything is saved in this browser only. It will not appear on other devices.'}</p></section>
+  <section class="panel"><h2>Where your data lives</h2><p class="soft" style="margin:8px 0 0">${S.mode==='db'?'Your holdings, transactions and assets are saved to this page in your Claude account, so they are there on every device you open it on. Anyone you share the page with can see them, so share it only with family you trust.':(Auth.active?'Everything is saved in this browser only and locked with your username and password, so it will not appear on other devices. The data is encrypted with your password. If you forget it, the data cannot be recovered.':'This page could not reach account storage, so everything is saved in this browser only. It will not appear on other devices.')}</p></section>
   <section class="panel"><h2>Start over</h2><p class="soft" style="margin:8px 0 12px">Removes every holding, transaction, asset and saved net worth point. Family members stay.</p><div id="reset-box"><button class="btn btn-danger" data-act="reset-ask">Delete all data</button></div></section></div>`;
 }
 
@@ -999,6 +1080,7 @@ document.addEventListener('click',e=>{
     case 'imp-go':runImport();break;
     case 'template':template(t.dataset.k);break;
     case 'export':exportData(t.dataset.k);break;
+    case 'save-family':{let n=val('s-family').replace(/\s+/g,' ').trim().replace(/\s+family$/i,'');Store.put('settings',{familyName:n});toast(n?'Family name saved':'Family name cleared');break}
     case 'save-rates':{const fx=numv('s-fx'),g=numv('s-gold'),s=numv('s-silver');Store.put('settings',{fx:fx>0?fx:S.settings.fx,gold:g,silver:s});toast('Rates saved');break}
     case 'reset-ask':$('#reset-box').innerHTML=`<button class="btn btn-danger" data-act="reset-go">Yes, delete everything</button> <button class="btn btn-ghost" data-act="go" data-v="settings">Cancel</button>`;break;
     case 'reset-go':{S.holdings.slice().forEach(h=>Store.del('holdings',h.id));S.assets.slice().forEach(x=>Store.del('assets',x.id));S.snaps.slice().forEach(x=>Store.del('snaps',x.id));toast('All data deleted');break}
@@ -1024,6 +1106,7 @@ document.addEventListener('change',e=>{
   else if(id==='im-mode')IMP.mode=e.target.value;
 });
 document.addEventListener('input',e=>{if(e.target.id==='ah-sym')ahCheckExisting()});
+$('#btn-lock').addEventListener('click',()=>location.reload());
 $('#btn-mask').addEventListener('click',e=>{const on=document.body.classList.toggle('mask');e.currentTarget.setAttribute('aria-pressed',on);saveLS('ft_mask',on?'1':'0')});
 
 /* ============================== boot ============================== */
