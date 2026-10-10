@@ -1,5 +1,14 @@
-<title>Family FinTrack Blank Copy</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05070d">
+<meta name="color-scheme" content="dark">
+<title>Family FinTrack</title>
 <style>
+html{background:#05070d;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);-webkit-text-size-adjust:100%}
+
 /* Layout: sticky header (brand, family switcher, actions) over a pill nav, then one view at a time. Dark FolioDeck look carried over from the original app. */
 :root{
   --ink-950:#05070d; --ink-900:#080c15; --ink-850:#0b111d; --ink-800:#0f1726; --ink-700:#162032; --ink-600:#1e2b41;
@@ -136,8 +145,11 @@ body.mask .mv{filter:blur(7px);user-select:none}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .warnlist{margin:0;padding-left:18px;color:var(--mist-300);font-size:12.5px}
 @media(max-width:560px){.donut-wrap>svg{margin-inline:auto}.panel{padding:14px}}
+@media(max-width:640px){table.hl{min-width:0}.hl th:nth-child(2),.hl td:nth-child(2),.hl th:nth-child(3),.hl td:nth-child(3),.hl th:nth-child(4),.hl td:nth-child(4),.hl th:nth-child(6),.hl td:nth-child(6),.hl th:nth-child(8),.hl td:nth-child(8){display:none}.hl td .nm,.hl td .sy{max-width:44vw}.hl td,.hl th{padding-inline:7px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
+</head>
+<body>
 <div class="backdrop"></div><div class="grid-bg"></div>
 <div class="wrap">
   <header class="top"><div class="top-in">
@@ -459,7 +471,7 @@ function vHoldings(){
    <select id="hf-type" style="max-width:150px" aria-label="Type"><option value="">All types</option>${Object.entries(TYPE_LABEL).map(([k,v])=>`<option value="${k}" ${f.type===k?'selected':''}>${v}</option>`).join('')}</select>
    <label class="chip" style="cursor:pointer"><input type="checkbox" id="hf-miss" ${f.missing?'checked':''}> No buy price</label>
    <label class="chip" style="cursor:pointer"><input type="checkbox" id="hf-sold" ${f.sold?'checked':''}> Include sold-out</label></div>
-  <div class="tbl-wrap"><table><thead><tr>${th('name','Holding',1)}${th('qty','Qty')}${th('avg','Avg buy')}${th('price','Price')}${th('value','Value')}${th('day','Day')}${th('pnl','P&L')}${th('pct','P&L %')}</tr></thead><tbody id="hl-body">${holdingsBody()}</tbody></table></div>
+  <div class="tbl-wrap"><table class="hl"><thead><tr>${th('name','Holding',1)}${th('qty','Qty')}${th('avg','Avg buy')}${th('price','Price')}${th('value','Value')}${th('day','Day')}${th('pnl','P&L')}${th('pct','P&L %')}</tr></thead><tbody id="hl-body">${holdingsBody()}</tbody></table></div>
   <div class="muted" style="font-size:12px;margin-top:10px">US stock values use today's USD to INR rate. P&L on them is calculated in dollars, then converted at that rate.</div></section>`;
 }
 
@@ -1024,3 +1036,6 @@ $('#btn-mask').addEventListener('click',e=>{const on=document.body.classList.tog
   Store.init();
 })();
 </script>
+
+</body>
+</html>
