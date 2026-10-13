@@ -81,6 +81,9 @@ h2{font-size:15px;color:#fff} h3{font-size:13.5px;color:#fff}
 .big{font-size:clamp(30px,6vw,46px);font-weight:750;letter-spacing:-.025em;color:#fff;line-height:1.05}
 .kpi .v{font-size:22px;font-weight:700;color:#fff;margin-top:6px;letter-spacing:-.01em}
 .kpi .s{font-size:12px;margin-top:3px}
+.kpi-btn{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;appearance:none}
+.kpi-btn:hover,.kpi-btn:focus-visible{border-color:var(--accent)}
+.kpi-btn .label::after{content:' ›';color:var(--accent-2)}
 .banner{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;padding:12px 16px;border-radius:14px;border:1px solid rgba(240,185,11,.3);background:rgba(240,185,11,.07);color:var(--mist-200)}
 .banner.info{border-color:rgba(33,212,253,.3);background:rgba(33,212,253,.06)}
 /* tables */
@@ -203,7 +206,8 @@ function saveLS(k,v){try{localStorage.setItem(k,v)}catch(e){}} function loadLS(k
 
 /* ============================== constants ============================== */
 const CLASSES=['Equity (India)','Equity (US)','Debt','Hybrid','Gold','Silver','Real Estate','Retirement','Cash & Deposits','Other'];
-const CLASS_COLOR={'Equity (India)':'#7c5cff','Equity (US)':'#21d4fd','Debt':'#16c784','Hybrid':'#5b8cff','Gold':'#f0b90b','Silver':'#c4cddd','Real Estate':'#ff8a5b','Retirement':'#f472b6','Cash & Deposits':'#2dd4bf','Other':'#c084fc'};
+const CLASS_COLOR={'Equity (India)':'#7c5cff','Equity (US)':'#21d4fd','Debt':'#16c784','Hybrid':'#5b8cff','Gold':'#f0b90b','Silver':'#c4cddd','Real Estate':'#ff8a5b','Retirement':'#f472b6','Cash & Deposits':'#2dd4bf','Other':'#c084fc','Indian stocks':'#7c5cff','ETFs':'#21d4fd','Mutual funds':'#16c784','US stocks':'#f0b90b','Bonds':'#ff8a5b'};
+const TYPE_GROUP={stock:'Indian stocks',etf:'ETFs',mf:'Mutual funds',us:'US stocks',bond:'Bonds'};
 const ASSET_CATS=[
   {k:'Gold',cls:'Gold',hint:'Jewellery, coins, bars'},{k:'Silver',cls:'Silver',hint:'Coins, bars, utensils'},
   {k:'Real Estate',cls:'Real Estate',hint:'Flat, plot, land, commercial'},{k:'Retirement',cls:'Retirement',hint:'PPF, EPF, NPS'},
@@ -550,18 +554,22 @@ function inScope(m,scope){return scope==='all'||m===scope}
 function compute(scope){
   const hs=S.holdings.filter(h=>inScope(h.member,scope)).map(enrich).filter(e=>e.pos.qty>0||S.hf.sold&&false);
   const as=S.assets.filter(a=>inScope(a.member,scope)).map(a=>({a,...assetValue(a)}));
-  const byClass={},byMember={};let mkt=0,inv=0,pnl=0,real=0,day=0,other=0,liab=0,missCost=0,missRate=0,costCovered=0;
+  const byClass={},byMember={},pnlByClass={};let mkt=0,inv=0,pnl=0,real=0,day=0,other=0,liab=0,missCost=0,missRate=0,costCovered=0,mktInv=0,mktPnl=0;
+  const pc=k=>pnlByClass[k]||(pnlByClass[k]={value:0,cov:0,inv:0,pnl:0,n:0});
   const addM=(m,v)=>{byMember[m]=(byMember[m]||0)+v};
   for(const e of hs){mkt+=e.value;day+=e.dayV;real+=e.realized;byClass[e.h.cls]=(byClass[e.h.cls]||0)+e.value;addM(e.h.member,e.value);
-    if(e.pos.qtyKnown>0){inv+=e.costI;pnl+=e.pnl;costCovered+=e.pos.qtyKnown*e.price*e.fx}
+    const o=pc(e.h.cls);o.value+=e.value;o.n++;
+    if(e.pos.qtyKnown>0){const cv=e.pos.qtyKnown*e.price*e.fx;inv+=e.costI;pnl+=e.pnl;costCovered+=cv;mktInv+=e.costI;mktPnl+=e.pnl;o.cov+=cv;o.inv+=e.costI;o.pnl+=e.pnl}
     if(!e.pos.known)missCost++}
   for(const x of as){
     if(x.missingRate)missRate++;
     if(x.a.cat==='Liability'){liab+=x.v;addM(x.a.member,-x.v)}
-    else{other+=x.v;const c=(ASSET_CATS.find(c=>c.k===x.a.cat)||{}).cls||'Other';byClass[c]=(byClass[c]||0)+x.v;addM(x.a.member,x.v)}
+    else{other+=x.v;const c=(ASSET_CATS.find(c=>c.k===x.a.cat)||{}).cls||'Other';byClass[c]=(byClass[c]||0)+x.v;addM(x.a.member,x.v)
+      const o=pc(c);o.value+=x.v;o.n++;const cost=+x.a.cost;
+      if(cost>0&&!x.missingRate){const g=x.v-cost;inv+=cost;pnl+=g;costCovered+=x.v;o.cov+=x.v;o.inv+=cost;o.pnl+=g}}
   }
   const assets=mkt+other;
-  return {hs,as,byClass,byMember,mkt,inv,pnl,real,day,other,liab,assets,net:assets-liab,missCost,missRate,costCovered,
+  return {hs,as,byClass,byMember,pnlByClass,mktInv,mktPnl,mkt,inv,pnl,real,day,other,liab,assets,net:assets-liab,missCost,missRate,costCovered,
     pnlPct:inv>0?pnl/inv*100:null,dayPct:mkt-day>0?day/(mkt-day)*100:null};
 }
 function memberOf(id){return S.members.find(m=>m.id===id)||{name:'Unknown',color:'#7c8aa5'}}
@@ -654,9 +662,9 @@ function vDashboard(){
   </div>
   ${banners.join('')}
   <div class="grid g-kpi">
-    ${kpi('Market investments',M(c.mkt),`${c.hs.length} holding${c.hs.length===1?'':'s'}`)}
-    ${kpi('Invested (with buy price)',M(c.inv),c.costCovered&&c.mkt?`covers ${Math.round(c.costCovered/c.mkt*100)}% of market value`:'no buy prices yet')}
-    ${kpi('Unrealised P&L',`<span class="${cls_(c.pnl)}">${c.inv>0?M(c.pnl):'—'}</span>`,c.inv>0?`<span class="${cls_(c.pnl)}">${pctf(c.pnlPct)}</span>`:'needs buy prices')}
+    ${kpi('Market investments',M(c.mkt),`${c.hs.length} holding${c.hs.length===1?'':'s'} · see split`,'mkt-detail')}
+    ${kpi('Invested (with cost)',M(c.inv),c.costCovered&&(c.mkt+c.other)?`covers ${Math.round(c.costCovered/(c.mkt+c.other)*100)}% of asset value`:'no buy prices yet')}
+    ${kpi('Unrealised P&L',`<span class="${cls_(c.pnl)}">${c.inv>0?M(c.pnl):'—'}</span>`,c.inv>0?`<span class="${cls_(c.pnl)}">${pctf(c.pnlPct)}</span> · all asset classes`:'needs buy prices','pnl-detail')}
     ${kpi('Realised P&L',`<span class="${cls_(c.real)}">${M(c.real)}</span>`,'from sells you recorded')}
     ${kpi('Other assets',M(c.other),(n=>n+(n===1?' item':' items'))(c.as.filter(x=>x.a.cat!=='Liability').length))}
   </div>
@@ -674,10 +682,39 @@ function vDashboard(){
   </div>`;
 }
 function cls_(n){return !fin(n)||n===0?'':(n>0?'gain':'loss')}
-function kpi(l,v,s){return `<div class="panel kpi"><div class="label">${l}</div><div class="v">${v}</div><div class="s muted">${s}</div></div>`}
+function kpi(l,v,s,act){return act?`<button type="button" class="panel kpi kpi-btn" data-act="${act}"><div class="label">${l}</div><div class="v">${v}</div><div class="s muted">${s}</div></button>`:`<div class="panel kpi"><div class="label">${l}</div><div class="v">${v}</div><div class="s muted">${s}</div></div>`}
 function topList(top,max){return `<div class="rows">${top.map(e=>`<div class="hrow"><span style="min-width:0"><b>${esc(e.h.name||e.h.sym)}</b> ${e.h.type==='mf'?'':`<span class="muted">${esc(e.h.sym)}</span>`}</span><span class="mv">${compact(e.value)}</span><div class="bar"><i style="width:${e.value/max*100}%;background:${CLASS_COLOR[e.h.cls]||'#7c5cff'}"></i></div></div>`).join('')||'<span class="muted">No holdings yet</span>'}</div>`}
 function moverRow(e){return `<div class="hrow"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(e.h.name||e.h.sym)}"><b>${esc(e.h.type==='mf'?(e.h.name||e.h.sym):e.h.sym)}</b></span><span class="${cls_(e.chg)} tnum">${pctf(e.chg)}</span></div>`}
 
+/* ---------- breakdown modals ---------- */
+function mktModal(){
+  const c=compute(S.scope),g={};
+  for(const e of c.hs){const k=TYPE_GROUP[e.h.type]||'Other';const o=g[k]||(g[k]={n:0,value:0,inv:0,pnl:0});o.n++;o.value+=e.value;if(e.pos.qtyKnown>0){o.inv+=e.costI;o.pnl+=e.pnl}}
+  const ents=Object.entries(g).sort((a,b)=>b[1].value-a[1].value),tot=ents.reduce((s,[,o])=>s+o.value,0);
+  if(!ents.length||tot<=0){openModal(`${mhead('Market investments',esc(scopeName()))}<div class="muted">No market holdings yet.</div>`);return}
+  const rows=ents.map(([k,o])=>`<tr><td class="l"><span class="dot" style="background:${CLASS_COLOR[k]||'#7c8aa5'};margin-right:7px"></span>${esc(k)}</td><td>${o.n}</td><td><b>${M(o.value)}</b></td><td>${(o.value/tot*100).toFixed(1)}%</td><td class="${cls_(o.pnl)}">${o.inv>0?M(o.pnl):'—'}</td><td class="${cls_(o.pnl)}">${o.inv>0?pctf(o.pnl/o.inv*100):'—'}</td></tr>`).join('');
+  openModal(`${mhead('Market investments',esc(scopeName())+' · by type')}
+    <div class="donut-wrap">${donut(ents.map(([k,o])=>[k,o.value]),tot,'Market value',compact(tot))}
+    <div class="legend">${ents.map(([k,o])=>`<div class="lg"><span class="dot" style="background:${CLASS_COLOR[k]||'#7c8aa5'}"></span><span>${esc(k)}</span><span class="mv">${compact(o.value)}</span><span class="pc tnum">${(o.value/tot*100).toFixed(1)}%</span></div>`).join('')}</div></div>
+    <div class="tbl-wrap" style="margin-top:14px"><table style="min-width:460px"><thead><tr><th class="l">Type</th><th>Holdings</th><th>Value</th><th>Share</th><th>P&L</th><th>Return</th></tr></thead><tbody>${rows}
+    <tr><td class="l"><b>Total</b></td><td>${c.hs.length}</td><td><b>${M(tot)}</b></td><td>100%</td><td class="${cls_(c.mktPnl)}">${c.mktInv>0?M(c.mktPnl):'—'}</td><td class="${cls_(c.mktPnl)}">${c.mktInv>0?pctf(c.mktPnl/c.mktInv*100):'—'}</td></tr></tbody></table></div>
+    <div class="muted" style="font-size:12px;margin-top:10px">P&L counts only units that have a buy price.</div>`);
+}
+function pnlModal(){
+  const c=compute(S.scope);
+  const ents=CLASSES.map(k=>[k,c.pnlByClass[k]]).filter(e=>e[1]&&e[1].value>0);
+  if(!ents.length){openModal(`${mhead('Unrealised P&L',esc(scopeName()))}<div class="muted">Nothing to show yet.</div>`);return}
+  const maxAbs=Math.max(1,...ents.map(([,o])=>Math.abs(o.pnl)));
+  const rows=ents.map(([k,o])=>{const miss=o.value-o.cov;return `<tr><td class="l"><span class="dot" style="background:${CLASS_COLOR[k]||'#7c8aa5'};margin-right:7px"></span>${esc(k)}${miss>1?`<div class="muted" style="font-size:11.5px">${M(miss,1)} has no cost, left out</div>`:''}</td><td>${M(o.value)}</td><td>${o.inv>0?M(o.inv):'—'}</td><td class="${cls_(o.pnl)}"><b>${o.inv>0?M(o.pnl):'—'}</b></td><td class="${cls_(o.pnl)}">${o.inv>0?pctf(o.pnl/o.inv*100):'—'}</td></tr>`}).join('');
+  const bars=ents.filter(([,o])=>o.inv>0).map(([k,o])=>`<div class="hrow"><span>${esc(k)}</span><span class="${cls_(o.pnl)} mv">${compact(o.pnl)}</span><div class="bar"><i style="width:${Math.abs(o.pnl)/maxAbs*100}%;background:${o.pnl>=0?'var(--gain)':'var(--loss)'}"></i></div></div>`).join('');
+  openModal(`${mhead('Unrealised P&L',esc(scopeName())+' · by asset class')}
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px"><div class="panel kpi"><div class="label">Total P&L</div><div class="v ${cls_(c.pnl)}">${c.inv>0?M(c.pnl):'—'}</div><div class="s muted ${cls_(c.pnl)}">${c.inv>0?pctf(c.pnlPct):''}</div></div>
+    <div class="panel kpi"><div class="label">Invested</div><div class="v">${M(c.inv)}</div><div class="s muted">with a known cost</div></div></div>
+    ${bars?`<div class="rows" style="margin-bottom:12px">${bars}</div>`:''}
+    <div class="tbl-wrap"><table style="min-width:460px"><thead><tr><th class="l">Asset class</th><th>Value</th><th>Invested</th><th>P&L</th><th>Return</th></tr></thead><tbody>${rows}
+    <tr><td class="l"><b>Total</b></td><td>${M(c.mkt+c.other)}</td><td>${c.inv>0?M(c.inv):'—'}</td><td class="${cls_(c.pnl)}"><b>${c.inv>0?M(c.pnl):'—'}</b></td><td class="${cls_(c.pnl)}">${c.inv>0?pctf(c.pnlPct):'—'}</td></tr></tbody></table></div>
+    <div class="muted" style="font-size:12px;margin-top:10px">Market holdings use the average buy price. Gold, silver, property and other assets use the cost you entered. Loans are not counted. Anything without a cost is left out of P&L.</div>`);
+}
 /* ---------- holdings ---------- */
 function holdingRows(){
   const f=S.hf,q=f.q.trim().toLowerCase();
@@ -1076,7 +1113,7 @@ function parseWorkbook(wb){
   }
   return sheets;
 }
-const IMP={sheets:[],file:'',member:null,mode:'replace',busy:false,prog:''};
+const IMP={sheets:[],file:'',member:null,mode:'replace',src:'',busy:false,prog:''};
 function vImport(){
   const l=loadingOrEmpty();if(l)return l;
   return `<div class="grid g-2" style="align-items:start"><section class="panel"><h2 style="font-size:17px">Import a file</h2>
@@ -1095,7 +1132,8 @@ function impBody(){
   const hasH=sh.some(s=>s.use&&s.kind==='holdings');
   return `<div class="label" style="margin-bottom:8px">${esc(IMP.file)}</div>
   <div class="form-grid" style="margin-bottom:12px"><label class="fld"><span>Import into</span><select id="im-mem">${memberOptions(IMP.member)}<option value="__new">New member…</option></select></label>
-  ${hasH?`<label class="fld"><span>For holdings you already have</span><select id="im-mode"><option value="replace" ${IMP.mode==='replace'?'selected':''}>Replace position with this file</option><option value="add" ${IMP.mode==='add'?'selected':''}>Add as a new purchase</option></select></label>`:''}</div>
+  <label class="fld"><span>Broker or account (optional)</span><input type="text" id="im-src" list="im-srcs" value="${esc(IMP.src||'')}" placeholder="For example Zerodha" maxlength="40" autocomplete="off"><datalist id="im-srcs">${[...new Set(S.holdings.flatMap(h=>(h.txns||[]).map(t=>t.src).filter(Boolean)))].map(x=>`<option value="${esc(x)}">`).join('')}</datalist><small>Using more than one broker? Name each one. A new file then replaces only that broker's shares, never another broker's.</small></label>
+  ${hasH?`<label class="fld"><span>For holdings you already have</span><select id="im-mode"><option value="replace" ${IMP.mode==='replace'?'selected':''}>Replace this broker's position with this file</option><option value="add" ${IMP.mode==='add'?'selected':''}>Add as a new purchase</option></select></label>`:''}</div>
   <div id="im-new" class="form-grid" hidden style="margin-bottom:12px"><label class="fld"><span>New member name</span><input type="text" id="im-newname" placeholder="Spouse"></label><label class="fld"><span>Relation</span><select id="im-newrel">${['Spouse','Child','Parent','HUF','Other','Self'].map(r=>`<option>${r}</option>`).join('')}</select></label></div>
   <div class="rows">${sh.map((s,i)=>sheetBox(s,i)).join('')}</div>
   <div class="actions" style="margin-top:14px"><button class="btn btn-primary" data-act="imp-go" ${sh.some(s=>s.use)&&!IMP.busy?'':'disabled'}>Import selected</button><button class="btn btn-ghost" data-act="imp-clear">Clear</button></div><div id="imp-prog" class="muted" style="margin-top:10px">${esc(IMP.prog||'')}</div>`;
@@ -1139,8 +1177,10 @@ async function runImport(){
   if(memId==='__new'){const nm=val('im-newname');if(!nm){toast('Enter the new member name',true);IMP.busy=false;if(go)go.disabled=false;return}
     const m={id:uid(),name:nm,relation:val('im-newrel')||'Other',color:PALETTE[S.members.length%PALETTE.length],order:S.members.length};await Store.put('members',m);memId=m.id}
   const mode=val('im-mode')||'replace';
+  const srcLabel=(val('im-src')||'').trim();
+  const scopeFn=h=>{const t=h.txns||[];const has=srcLabel&&t.some(x=>x.src===srcLabel);return x=>srcLabel?(has?x.src===srcLabel:!x.src):!x.src};
   const hmap=new Map(S.holdings.filter(h=>h.member===memId).map(h=>[h.sym,JSON.parse(JSON.stringify(h))]));
-  const changed=new Set(),stats={newH:0,updH:0,tx:0,dupTx:0,prices:0,assets:0,over:0,noMatch:0};
+  const changed=new Set(),stats={newH:0,updH:0,tx:0,dupTx:0,prices:0,assets:0,over:0,noMatch:0,kept:0};
   const use=IMP.sheets.filter(s=>s.use);
   // across sheets, a holdings row that carries a buy price beats one without
   const best=new Map();
@@ -1155,7 +1195,13 @@ async function runImport(){
     if(it.name&&(!h.name||h.name===h.sym))h.name=it.name;
     if(it.price!=null){h.price=it.price;h.priceAt=today();if(it.chg!=null)h.chg=it.chg}
     const tx={id:uid(),d:mode==='add'&&!isNew?today():null,t:mode==='add'&&!isNew?'buy':'open',q:it.qty,p:it.avg};
-    if(isNew||mode==='replace')h.txns=[{...tx,t:'open',d:null}];else h.txns=[...(h.txns||[]),tx];
+    if(srcLabel)tx.src=srcLabel;
+    if(isNew||mode==='replace'){
+      const mine=scopeFn(h),old=(h.txns||[]).filter(mine),others=(h.txns||[]).filter(x=>!mine(x));
+      let p=it.avg;
+      if(p==null&&old.length){const pa=calcPos({txns:old}).avg;if(pa!=null&&pa>0){p=pa;stats.kept++}}
+      h.txns=[...others,{...tx,t:'open',d:null,p}];
+    }else h.txns=[...(h.txns||[]),tx];
     changed.add(h.id);
   }
   for(const s of use.filter(s=>s.kind==='txns')){
@@ -1169,7 +1215,7 @@ async function runImport(){
       for(const it of list){
         const k=it.key||`${it.d}|${it.t}|${+it.q.toFixed(4)}|${+it.p.toFixed(4)}`;
         if(have.has(k)){stats.dupTx++;continue}
-        have.add(k);txs.push({id:uid(),d:it.d,t:it.t,q:it.q,p:it.p,fee:it.fee||0,k});stats.tx++;
+        have.add(k);txs.push({id:uid(),d:it.d,t:it.t,q:it.q,p:it.p,fee:it.fee||0,k,...(srcLabel?{src:srcLabel}:{})});stats.tx++;
       }
       h.txns=txs;
       if(h.price==null){const last=list.slice().sort((a,b)=>a.d<b.d?1:-1)[0];h.price=last.p;h.priceAt=null}
@@ -1193,6 +1239,7 @@ async function runImport(){
   if(stats.newH)parts.push(`${stats.newH} new holding${stats.newH>1?'s':''}`);
   if(stats.updH)parts.push(`${stats.updH} updated`);
   if(stats.tx)parts.push(`${stats.tx} transaction${stats.tx>1?'s':''} added`);
+  if(stats.kept)parts.push(`${stats.kept} kept the average buy price you had, because the file had none`);
   if(stats.dupTx)parts.push(`${stats.dupTx} already imported, skipped`);
   if(stats.prices)parts.push(`${stats.prices} prices updated`);
   if(stats.noMatch)parts.push(`${stats.noMatch} price rows had no matching holding`);
@@ -1286,6 +1333,8 @@ document.addEventListener('click',e=>{
       <div class="actions"><button class="btn btn-ghost" data-act="rc-copy" data-code="${code}">Copy</button><button class="btn btn-ghost" data-act="rc-dl" data-code="${code}">Download</button></div>`)}).catch(()=>toast('Could not make a new code',true));break;
     case 'rc-copy':navigator.clipboard&&navigator.clipboard.writeText(t.dataset.code).then(()=>toast('Copied')).catch(()=>toast('Select the code and copy it',true));break;
     case 'rc-dl':blobSave('family-fintrack-recovery-code.txt',Auth.codeFile(t.dataset.code),'text/plain');break;
+    case 'mkt-detail':mktModal();break;
+    case 'pnl-detail':pnlModal();break;
     case 'refresh':Live.refresh(true);break;
     case 'save-live':{const px=val('s-proxy').trim();if(px&&!/^https:\/\/.+\{url\}/.test(px)){toast('The relay address must start with https:// and contain {url}',true);break}
       Store.put('settings',{autoPrices:$('#s-auto').checked,metalAuto:$('#s-metalauto').checked,premium:numv('s-premium')||0,proxyUrl:px});toast('Live price settings saved');Live.route=null;break}
@@ -1315,6 +1364,7 @@ document.addEventListener('change',e=>{
   else if(id==='as-cat'){asRefresh(S._asEdit)}
   else if(id==='im-mem'){IMP.member=e.target.value;$('#im-new').hidden=e.target.value!=='__new'}
   else if(id==='im-mode')IMP.mode=e.target.value;
+  else if(id==='im-src')IMP.src=e.target.value;
 });
 document.addEventListener('input',e=>{if(e.target.id==='ah-sym')ahCheckExisting()});
 $('#btn-lock').addEventListener('click',()=>location.reload());
