@@ -1,6 +1,6 @@
-# Family FinTrack
+# Corpus
 
-A single-page wealth tracker for a family. It shows the combined net worth of everyone in the household across Indian stocks, ETFs, mutual funds, US stocks, bonds, gold, silver, real estate, retirement accounts, deposits and loans, with correct profit and loss based on average buy prices.
+A single-page wealth tracker for one person or a whole family. It shows the combined net worth of everyone in the household across Indian stocks, ETFs, mutual funds, US stocks, bonds, gold, silver, real estate, retirement accounts, deposits and loans, with correct profit and loss based on average buy prices.
 
 It is one file (`index.html`). There is no server, no build step and no account to create. Open it in a browser and it works. Your data stays in your own browser.
 
@@ -32,6 +32,7 @@ It is one file (`index.html`). There is no server, no build step and no account 
 
 - **Family net worth in one place.** A dashboard with total net worth, invested amount, unrealised and realised profit, day change, allocation by asset class and a net worth history.
 - **A portfolio per family member.** Add each person, switch between "Whole family" and one member, and see each portfolio on its own.
+- **Just you, if you prefer.** Track only your own finances. The heading uses your name and the family switcher stays out of the way. Adding a second member switches the app to a family automatically.
 - **Market holdings.** Indian stocks, ETFs, mutual funds, US stocks (valued in rupees using the dollar rate) and bonds.
 - **Other assets.** Gold, silver, real estate, retirement (PPF, EPF, NPS), cash and deposits (savings, FD, RD), vehicles and other items. Gold and silver can be entered in grams and valued at the current rate.
 - **Liabilities.** Home loans, car loans and credit cards are subtracted from net worth.
@@ -48,10 +49,14 @@ It is one file (`index.html`). There is no server, no build step and no account 
 
 1. Open the page (the GitHub Pages link above, or `index.html` on your computer).
 2. The first screen offers to create a login. Either create one, or choose **Skip for now** to try the app as it is. You can add a login later from Settings.
-3. Add your family members under **Family**.
+3. A short welcome asks **what to call you** and **who you are tracking**:
+   - **Just me:** the page is just for you. The heading reads "Robert's wealth cockpit" and the family switcher is hidden.
+   - **My family:** you also give an optional family name ("Johnson family wealth cockpit") and the app opens the Family section so you can add members.
 4. Add holdings with **+ Add**, or bring them in with **Import**.
 5. Add gold, silver, property, deposits and loans under **Assets**.
-6. Open **Settings** to set the family name and check the live price options.
+6. Open **Settings** to check the live price options, and change who you are tracking at any time.
+
+The welcome appears only on a fresh start, with no data and no family members added. Choosing **Skip for now** on it keeps the defaults ("Me" and "Family wealth cockpit").
 
 ---
 
@@ -65,7 +70,7 @@ It is one file (`index.html`). There is no server, no build step and no account 
 | **Family** | Add members, give each a colour, and see each member's share of the total. |
 | **Transactions** | The full buy and sell history across holdings. |
 | **Import** | Upload Excel or CSV files. Templates are provided for holdings and transactions. |
-| **Settings** | Family name, rates, live price options, sign-in, export and backup, and delete all data. |
+| **Settings** | Who you are tracking (just me or my family), family name, rates, live price options, sign-in, export and backup, and delete all data. |
 
 ### Adding a holding
 
@@ -128,7 +133,7 @@ If a holding has no buy price, its value still counts toward net worth, but it i
 
 ## How average buy price and P&L are worked out
 
-Family FinTrack uses the **average cost method**.
+Corpus uses the **average cost method**.
 
 - **Opening position:** a quantity you already hold, at an average price you supply (or with the price unknown).
 - **Buy:** adds quantity. The new average is total cost divided by total quantity. Fees are added to the cost.
@@ -221,7 +226,7 @@ To open it like an app: on iPhone use **Share → Add to Home Screen**, and on A
 
 ## Hosting your own copy on GitHub Pages
 
-1. Create a new repository on GitHub, for example `family-fintrack`.
+1. Create a new repository on GitHub, for example `corpus`.
 2. Upload `index.html` and this `README.md` to the main branch.
 3. Go to **Settings → Pages**. Under **Build and deployment**, set **Source** to **Deploy from a branch**, branch **main**, folder **/ (root)**, and save.
 4. After a minute or two the page is live at `https://<your-username>.github.io/<repo-name>/`.
@@ -290,4 +295,4 @@ A one-click restore from the JSON backup is not available yet. To move data, re-
 
 ## Disclaimer
 
-Family FinTrack is a personal record-keeping tool. It is not financial, tax or investment advice. Prices and calculations are provided as is and may contain errors. Check important figures against your broker, fund house and bank statements.
+Corpus is a personal record-keeping tool. It is not financial, tax or investment advice. Prices and calculations are provided as is and may contain errors. Check important figures against your broker, fund house and bank statements.

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#05070d">
 <meta name="color-scheme" content="dark">
-<title>Family FinTrack</title>
+<title>Corpus</title>
 <style>
 html{background:#05070d;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);-webkit-text-size-adjust:100%}
 /* Layout: sticky header (brand, family switcher, actions) over a pill nav, then one view at a time. Dark FolioDeck look carried over from the original app. */
@@ -81,6 +81,9 @@ h2{font-size:15px;color:#fff} h3{font-size:13.5px;color:#fff}
 .big{font-size:clamp(30px,6vw,46px);font-weight:750;letter-spacing:-.025em;color:#fff;line-height:1.05}
 .kpi .v{font-size:22px;font-weight:700;color:#fff;margin-top:6px;letter-spacing:-.01em}
 .kpi .s{font-size:12px;margin-top:3px}
+.choice{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;appearance:none;padding:14px 16px}
+.choice b{display:block;font-size:15px;color:#fff}.choice span{display:block;font-size:12.5px;color:var(--mist-300);margin-top:3px}
+.choice:hover,.choice:focus-visible{border-color:var(--accent)}
 .kpi-btn{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;appearance:none}
 .kpi-btn:hover,.kpi-btn:focus-visible{border-color:var(--accent)}
 .kpi-btn .label::after{content:' ›';color:var(--accent-2)}
@@ -163,7 +166,7 @@ body.locked .wrap{visibility:hidden}
 <div class="wrap">
   <header class="top"><div class="top-in">
     <div class="top-row">
-      <div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div><b>Family FinTrack</b><span id="brand-sub">Family wealth cockpit</span></div></div>
+      <div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div><b>Corpus</b><span id="brand-sub">Family wealth cockpit</span></div></div>
       <div class="actions">
         <span class="status" id="status"></span>
         <button class="btn btn-ghost icon-btn" id="btn-mask" title="Hide amounts" aria-label="Hide amounts" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
@@ -244,7 +247,7 @@ const Auth={dek:null,rec:null,iters:200000,active:false,t:0,fails:0,
   async persistNow(){clearTimeout(this.t);saveLS('fintrack_enc_v1',await this.seal(snapState()))},
   async changeLogin(u,p){this.rec.pw=await this.wrapPw(u,p);await this.persistNow()},
   async newRecovery(){const c=this.genCode();this.rec.rc=await this.wrapRc(c);await this.persistNow();return c},
-  codeFile(code){return 'Family FinTrack recovery code\n\n'+code+'\n\nKeep this somewhere safe and private. With this code you can set a new password if you forget yours. Anyone who has it and uses the same browser can open your data, so do not share it.\n'},
+  codeFile(code){return 'Corpus recovery code\n\n'+code+'\n\nKeep this somewhere safe and private. With this code you can set a new password if you forget yours. Anyone who has it and uses the same browser can open your data, so do not share it.\n'},
   async start(){
     if(!this.ok())return null;
     let rec=null;try{rec=JSON.parse(loadLS('fintrack_enc_v1')||'null')}catch(e){}
@@ -257,7 +260,7 @@ const Auth={dek:null,rec:null,iters:200000,active:false,t:0,fails:0,
     document.body.classList.add('locked');
     const root=document.createElement('div');root.className='lock';root.id='lock';document.body.appendChild(root);
     const hasOld=!rec&&old&&((old.holdings||[]).length||(old.assets||[]).length);
-    const head='<div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div><b>Family FinTrack</b><span>Family wealth cockpit</span></div></div>';
+    const head='<div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div><b>Corpus</b><span>Wealth cockpit</span></div></div>';
     const err=m=>{const e=$('#lk-err');if(e)e.textContent=m||''};
     const finish=(dek,data)=>{this.dek=dek;this.active=true;root.remove();document.body.classList.remove('locked');const b=$('#btn-lock');if(b)b.hidden=false;resolve({data})};
     const lbl=(setup)=>setup?'Create login':'Open dashboard';
@@ -271,7 +274,7 @@ const Auth={dek:null,rec:null,iters:200000,active:false,t:0,fails:0,
         <button class="btn btn-primary" type="button" id="rc-go" disabled>Continue</button></div>`;
       $('#rc-ok').addEventListener('change',e=>{$('#rc-go').disabled=!e.target.checked});
       $('#rc-copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(code);$('#rc-copy').textContent='Copied'}catch(e){$('#rc-copy').textContent='Select and copy it above'}});
-      $('#rc-dl').addEventListener('click',()=>blobSave('family-fintrack-recovery-code.txt',this.codeFile(code),'text/plain'));
+      $('#rc-dl').addEventListener('click',()=>blobSave('corpus-recovery-code.txt',this.codeFile(code),'text/plain'));
       $('#rc-go').addEventListener('click',next);
     };
     const eraseBlock=()=>{
@@ -585,7 +588,7 @@ function compute(scope){
     pnlPct:inv>0?pnl/inv*100:null,dayPct:mkt-day>0?day/(mkt-day)*100:null};
 }
 function memberOf(id){return S.members.find(m=>m.id===id)||{name:'Unknown',color:'#7c8aa5'}}
-function scopeName(){return S.scope==='all'?'Whole family':memberOf(S.scope).name}
+function scopeName(){return S.scope==='all'?(isSolo()?(ownerName()||'You'):'Whole family'):memberOf(S.scope).name}
 
 /* snapshot of net worth, one per day, builds the trend line */
 function afterLoad(){
@@ -621,9 +624,14 @@ function trendChart(points){
 
 /* ============================== views ============================== */
 const NAVS=[['dashboard','Dashboard'],['holdings','Holdings'],['assets','Other assets'],['family','Family'],['transactions','Transactions'],['import','Import'],['settings','Settings']];
-function brandSub(){const n=String(S.settings.familyName||'').trim();return n?n+' family wealth cockpit':'Family wealth cockpit'}
+function isSolo(){return S.settings.trackMode==='solo'&&S.members.length<=1}
+function ownerName(){const m=S.members[0],n=m?String(m.name||'').trim():'';return !n||/^me$/i.test(n)?'':n}
+function brandSub(){
+  if(isSolo()){const n=ownerName();return n?n+"'s wealth cockpit":'My wealth cockpit'}
+  const n=String(S.settings.familyName||'').trim();return n?n+' family wealth cockpit':'Family wealth cockpit'}
 function renderChrome(){
   $('#brand-sub').textContent=brandSub();
+  const sc=$('#scopes');sc.hidden=isSolo();
   $('#scopes').innerHTML=`<button class="scope" data-act="scope" data-id="all" aria-pressed="${S.scope==='all'}">Whole family</button>`+S.members.map(m=>`<button class="scope" data-act="scope" data-id="${esc(m.id)}" aria-pressed="${S.scope===m.id}"><span class="dot" style="background:${esc(m.color)}"></span>${esc(m.name)}</button>`).join('');
   $('#nav').innerHTML=NAVS.map(([k,l])=>`<button class="pill" data-act="go" data-v="${k}" ${S.view===k?'aria-current="page"':''}>${l}</button>`).join('');
 }
@@ -684,11 +692,11 @@ function vDashboard(){
     <section class="panel"><div class="sec-head"><h2>Allocation</h2><span class="label">By asset class</span></div>
       <div class="donut-wrap">${donut(classEntries,totalA,'Total assets',compact(totalA))}
       <div class="legend">${classEntries.map(([k,v])=>`<div class="lg"><span class="dot" style="background:${CLASS_COLOR[k]}"></span><span>${esc(k)}</span><span class="mv">${compact(v)}</span><span class="pc tnum">${(v/totalA*100).toFixed(1)}%</span></div>`).join('')||'<span class="muted">Nothing to show yet</span>'}</div></div></section>
-    <section class="panel"><div class="sec-head"><h2>${S.scope==='all'?'By family member':'Biggest holdings'}</h2><span class="label">${S.scope==='all'?'Net worth':'Market value'}</span></div>
-      ${S.scope==='all'?`<div class="rows">${memEntries.map(([m,v])=>`<div class="hrow"><span style="display:flex;gap:8px;align-items:center"><span class="dot" style="background:${esc(m.color)}"></span><b>${esc(m.name)}</b> <span class="muted">${esc(m.relation||'')}</span></span><span class="mv">${compact(v)}</span><div class="bar"><i style="width:${Math.max(v,0)/memMax*100}%;background:${esc(m.color)}"></i></div></div>`).join('')}</div>`:topList(top,topMax)}</section>
+    <section class="panel"><div class="sec-head"><h2>${(S.scope==='all'&&!isSolo())?'By family member':'Biggest holdings'}</h2><span class="label">${(S.scope==='all'&&!isSolo())?'Net worth':'Market value'}</span></div>
+      ${(S.scope==='all'&&!isSolo())?`<div class="rows">${memEntries.map(([m,v])=>`<div class="hrow"><span style="display:flex;gap:8px;align-items:center"><span class="dot" style="background:${esc(m.color)}"></span><b>${esc(m.name)}</b> <span class="muted">${esc(m.relation||'')}</span></span><span class="mv">${compact(v)}</span><div class="bar"><i style="width:${Math.max(v,0)/memMax*100}%;background:${esc(m.color)}"></i></div></div>`).join('')}</div>`:topList(top,topMax)}</section>
   </div>
   <div class="grid g-2">
-    ${S.scope==='all'?`<section class="panel"><div class="sec-head"><h2>Biggest holdings</h2><span class="label">Market value</span></div>${topList(top,topMax)}</section>`:''}
+    ${(S.scope==='all'&&!isSolo())?`<section class="panel"><div class="sec-head"><h2>Biggest holdings</h2><span class="label">Market value</span></div>${topList(top,topMax)}</section>`:''}
     <section class="panel"><div class="sec-head"><h2>Today's movers</h2><span class="label">From last import</span></div>
       ${movers.length?`<div class="grid g-2" style="gap:14px"><div class="rows">${gain.map(moverRow).join('')}</div><div class="rows">${lose.map(moverRow).join('')||'<span class="muted">No losers today</span>'}</div></div>`:'<span class="muted">Prices carry a daily change only after a price import.</span>'}</section>
   </div>`;
@@ -789,7 +797,8 @@ function assetCard(x){
 function vFamily(){
   const l=loadingOrEmpty();if(l)return l;
   const all=compute('all');
-  return `<div class="sec-head" style="margin:0"><div><h2 style="font-size:18px">Family</h2><div class="muted" style="font-size:12px;margin-top:2px">One portfolio per person, so everyone's investments stay separate and roll up into one total.</div></div><button class="btn btn-primary" data-act="add-member">+ Add member</button></div>
+  const soloBanner=isSolo()?`<div class="banner info"><span>You are tracking just yourself. Add a family member any time to see a family total, and each person keeps their own portfolio.</span><button class="btn btn-ghost btn-sm" data-act="add-member">+ Add member</button></div>`:'';
+  return soloBanner+`<div class="sec-head" style="margin:0"><div><h2 style="font-size:18px">Family</h2><div class="muted" style="font-size:12px;margin-top:2px">One portfolio per person, so everyone's investments stay separate and roll up into one total.</div></div><button class="btn btn-primary" data-act="add-member">+ Add member</button></div>
   <div class="grid g-3">${S.members.map(m=>{const c=compute(m.id);const share=all.net>0?c.net/all.net*100:0;
     return `<section class="panel"><div class="sec-head" style="margin-bottom:8px"><div style="display:flex;gap:10px;align-items:center;min-width:0"><span class="dot" style="background:${esc(m.color)};width:14px;height:14px"></span><div style="min-width:0"><h2>${esc(m.name)}</h2><div class="muted" style="font-size:12px">${esc(m.relation||'')}</div></div></div><button class="btn btn-ghost btn-sm" data-act="edit-member" data-id="${esc(m.id)}">Edit</button></div>
     <div class="label">Net worth</div><div class="mv" style="font-size:24px;font-weight:700;color:#fff;margin:4px 0 10px">${fmt(c.net)}</div>
@@ -839,10 +848,15 @@ function livePanel(){
 }
 function vSettings(){
   const st=S.settings;
+  const solo=isSolo();
+  const modePanel=`<section class="panel"><h2>Who are you tracking?</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">${solo?'Just you. The heading shows your name, and the family switcher is hidden.':'A family. Each member has their own portfolio and the dashboard shows the family total.'}</div>
+    <div class="seg" role="group" aria-label="Tracking mode"><button type="button" data-act="set-mode" data-m="solo" aria-pressed="${solo}">Just me</button><button type="button" data-act="set-mode" data-m="family" aria-pressed="${!solo}">My family</button></div>
+    ${S.members.length>1?'<div class="muted" style="font-size:12px;margin-top:10px">Just me is available when only one person is added.</div>':''}</section>`;
   return `<div class="grid g-2">
-  <section class="panel"><h2>Family name</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Shown under the title at the top. Enter Johnson to see "Johnson family wealth cockpit". Leave it empty for just "Family wealth cockpit".</div>
+  ${modePanel}
+  ${solo?'':`<section class="panel"><h2>Family name</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Shown under the title at the top. Enter Johnson to see "Johnson family wealth cockpit". Leave it empty for just "Family wealth cockpit".</div>
     <label class="fld"><span>Family name</span><input type="text" id="s-family" maxlength="30" placeholder="Johnson" value="${esc(st.familyName||'')}" autocomplete="off"></label>
-    <div class="actions" style="margin-top:14px"><button class="btn btn-primary" data-act="save-family">Save name</button></div></section>
+    <div class="actions" style="margin-top:14px"><button class="btn btn-primary" data-act="save-family">Save name</button></div></section>`}
   <section class="panel"><h2>Rates</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Used to value US holdings and gold or silver entered in grams.</div>
     <div class="form-grid"><label class="fld"><span>USD to INR</span><input type="number" step="0.0001" id="s-fx" value="${fin(st.fx)?st.fx:''}"></label>
     <label class="fld"><span>Gold, 24K ₹ per gram</span><input type="number" step="0.01" id="s-gold" value="${fin(st.gold)?st.gold:''}"></label>
@@ -1286,7 +1300,7 @@ function exportData(k){
     return saveFile('transactions.csv',toCSV(['Member','Symbol','Date','Type','Quantity','Price','Fees'],rows))}
   if(k==='assets'){const rows=S.assets.map(a=>[assetOwners(a).map(id=>memberOf(id).name).join(' & '),a.cat,a.name,a.sub||'',assetValue(a).v,a.cost==null?'':a.cost,a.note||'']);
     return saveFile('other-assets.csv',toCSV(['Members (joint assets list all owners)','Category','Name','Detail','Value INR (full)','Bought for (full)','Note'],rows))}
-  return saveFile('fintrack-backup.json',JSON.stringify({exported:today(),members:S.members,holdings:S.holdings,assets:S.assets,settings:S.settings,snaps:S.snaps},null,1));
+  return saveFile('corpus-backup.json',JSON.stringify({exported:today(),members:S.members,holdings:S.holdings,assets:S.assets,settings:S.settings,snaps:S.snaps},null,1));
 }
 function template(k){
   if(k==='txns')return saveFile('transactions-template.csv',toCSV(['Date','Symbol','Type','Quantity','Price','Fees'],[['2026-04-15','RELIANCE','BUY',2,1250.5,20],['2026-08-02','RELIANCE','SELL',1,1320,15]]));
@@ -1353,9 +1367,16 @@ document.addEventListener('click',e=>{
       <div class="panel" style="padding:14px;text-align:center;margin-bottom:10px"><div id="rc-code" style="font-family:var(--font-mono);font-size:17px;letter-spacing:.06em;word-break:break-all;user-select:all">${code}</div></div>
       <div class="actions"><button class="btn btn-ghost" data-act="rc-copy" data-code="${code}">Copy</button><button class="btn btn-ghost" data-act="rc-dl" data-code="${code}">Download</button></div>`)}).catch(()=>toast('Could not make a new code',true));break;
     case 'rc-copy':navigator.clipboard&&navigator.clipboard.writeText(t.dataset.code).then(()=>toast('Copied')).catch(()=>toast('Select the code and copy it',true));break;
-    case 'rc-dl':blobSave('family-fintrack-recovery-code.txt',Auth.codeFile(t.dataset.code),'text/plain');break;
+    case 'rc-dl':blobSave('corpus-recovery-code.txt',Auth.codeFile(t.dataset.code),'text/plain');break;
     case 'mkt-detail':mktModal();break;
     case 'pnl-detail':pnlModal();break;
+    case 'set-mode':{const m=t.dataset.m;if(m==='solo'&&S.members.length>1){toast('Remove the other members first to track just yourself',true);break}
+      Store.put('settings',{trackMode:m});toast(m==='solo'?'Tracking just you':'Tracking a family');break}
+    case 'ob-solo':Onboard.finish('solo');break;
+    case 'ob-family':Onboard.familyStep();break;
+    case 'ob-back':Onboard.nameStep();break;
+    case 'ob-back2':Onboard.choiceStep();break;
+    case 'ob-skip':Store.put('settings',{onboarded:true});closeModal();break;
     case 'refresh':Live.refresh(true);break;
     case 'save-live':{const px=val('s-proxy').trim();if(px&&!/^https:\/\/.+\{url\}/.test(px)){toast('The relay address must start with https:// and contain {url}',true);break}
       Store.put('settings',{autoPrices:$('#s-auto').checked,metalAuto:$('#s-metalauto').checked,premium:numv('s-premium')||0,proxyUrl:px});toast('Live price settings saved');Live.route=null;break}
@@ -1392,6 +1413,42 @@ document.addEventListener('input',e=>{if(e.target.id==='ah-sym')ahCheckExisting(
 $('#btn-lock').addEventListener('click',()=>location.reload());
 $('#btn-mask').addEventListener('click',e=>{const on=document.body.classList.toggle('mask');e.currentTarget.setAttribute('aria-pressed',on);saveLS('ft_mask',on?'1':'0')});
 
+/* ---------- first-time welcome (downloadable copy, empty start only) ---------- */
+const Onboard={name:'',
+  need(){const m=S.members[0];return S.mode==='local'&&!S.settings.onboarded&&!S.holdings.length&&!S.assets.length&&S.members.length<=1&&(!m||!String(m.name||'').trim()||/^me$/i.test(String(m.name).trim()))},
+  maybe(){if(this.need())this.nameStep()},
+  head(t,sub){return `<div class="modal-head"><div><h2 style="font-size:19px">${t}</h2><div class="muted" style="font-size:12.5px;margin-top:4px">${sub}</div></div></div>`},
+  nameStep(){
+    openModal(`${this.head('Welcome to Corpus','Let us set things up. It takes a few seconds.')}
+    <form id="ob-form"><label class="fld"><span>What should we call you?</span><input type="text" id="ob-name" maxlength="30" placeholder="Robert" autocomplete="given-name" value="${esc(this.name)}"></label>
+    <div class="err" id="ob-err" role="alert" style="color:#ff8497;font-size:13px;min-height:18px;margin-top:4px"></div>
+    <div class="modal-foot"><button class="btn btn-ghost" type="button" data-act="ob-skip">Skip for now</button><button class="btn btn-primary" type="submit">Continue</button></div></form>`,{sticky:true,title:'Welcome'});
+  },
+  choiceStep(){
+    openModal(`${this.head('Hi '+esc(this.name)+'. Who are you tracking?','You can change this later in Settings.')}
+    <div style="display:grid;gap:10px"><button type="button" class="panel choice" data-act="ob-solo"><b>Just me</b><span>Only my own finances. The heading reads "${esc(this.name)}'s wealth cockpit".</span></button>
+    <button type="button" class="panel choice" data-act="ob-family"><b>My family</b><span>Me and my family members, each with their own portfolio and one family total.</span></button></div>
+    <div class="modal-foot"><button class="btn btn-ghost" type="button" data-act="ob-back">Back</button></div>`,{sticky:true,title:'Who are you tracking'});
+  },
+  familyStep(){
+    openModal(`${this.head('Your family name','Optional. It appears under the title, for example "Johnson family wealth cockpit".')}
+    <form id="ob-form3"><label class="fld"><span>Family name</span><input type="text" id="ob-fam" maxlength="30" placeholder="Johnson" autocomplete="off"></label>
+    <div class="modal-foot"><button class="btn btn-ghost" type="button" data-act="ob-back2">Back</button><button class="btn btn-primary" type="submit">Continue and add members</button></div></form>`,{sticky:true,title:'Family name'});
+  },
+  finish(mode,fam){
+    const m=S.members[0];
+    if(m)Store.put('members',{...m,name:this.name||m.name,relation:'Self'});else Store.ensureMember();
+    const st={trackMode:mode,onboarded:true};if(mode==='family'&&fam!=null)st.familyName=String(fam).replace(/\s+/g,' ').trim().replace(/\s+family$/i,'');
+    Store.put('settings',st);closeModal();
+    S.view=mode==='family'?'family':'dashboard';scheduleRender();
+    toast(mode==='solo'?'All set. Welcome, '+this.name:'All set. Add your family members here');
+  }
+};
+document.addEventListener('submit',e=>{
+  const f=e.target&&e.target.id;
+  if(f==='ob-form'){e.preventDefault();const n=val('ob-name').replace(/\s+/g,' ').trim();if(!n){const el=$('#ob-err');if(el)el.textContent='Enter your name, or choose Skip for now.';return}Onboard.name=n;Onboard.choiceStep()}
+  else if(f==='ob-form3'){e.preventDefault();Onboard.finish('family',val('ob-fam'))}
+});
 /* ============================== boot ============================== */
 (function boot(){
   const h=(location.hash||'').replace('#','');
@@ -1399,7 +1456,7 @@ $('#btn-mask').addEventListener('click',e=>{const on=document.body.classList.tog
   const sc=loadLS('ft_scope');if(sc)S.scope=sc;
   if(loadLS('ft_mask')==='1'){document.body.classList.add('mask');$('#btn-mask').setAttribute('aria-pressed','true')}
   render();
-  Store.init().then(()=>Live.start());
+  Store.init().then(()=>{Live.start();Onboard.maybe()});
 })();
 </script>
 
