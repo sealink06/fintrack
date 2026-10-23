@@ -551,9 +551,20 @@ function assetValue(a){
   return {v:+a.value||0};
 }
 function inScope(m,scope){return scope==='all'||m===scope}
+/* Jointly owned assets: a.members lists the owners and the value and cost are split equally among them. */
+function assetOwners(a){const ids=(a.members||[]).filter((id,i,arr)=>arr.indexOf(id)===i&&S.members.some(m=>m.id===id));return ids.length?ids:[a.member]}
+function assetEntries(scope){
+  const out=[];
+  for(const a of S.assets){
+    const own=assetOwners(a),base=assetValue(a),c=a.cost!=null&&a.cost!==''?+a.cost:NaN;
+    if(scope==='all')out.push({a,own,frac:1,v:base.v,missingRate:base.missingRate,cost:c,total:base.v});
+    else if(own.includes(scope)){const f=1/own.length;out.push({a,own,frac:f,v:base.v*f,missingRate:base.missingRate,cost:c*f,total:base.v})}
+  }
+  return out;
+}
 function compute(scope){
   const hs=S.holdings.filter(h=>inScope(h.member,scope)).map(enrich).filter(e=>e.pos.qty>0||S.hf.sold&&false);
-  const as=S.assets.filter(a=>inScope(a.member,scope)).map(a=>({a,...assetValue(a)}));
+  const as=assetEntries(scope);
   const byClass={},byMember={},pnlByClass={};let mkt=0,inv=0,pnl=0,real=0,day=0,other=0,liab=0,missCost=0,missRate=0,costCovered=0,mktInv=0,mktPnl=0;
   const pc=k=>pnlByClass[k]||(pnlByClass[k]={value:0,cov:0,inv:0,pnl:0,n:0});
   const addM=(m,v)=>{byMember[m]=(byMember[m]||0)+v};
@@ -563,9 +574,10 @@ function compute(scope){
     if(!e.pos.known)missCost++}
   for(const x of as){
     if(x.missingRate)missRate++;
-    if(x.a.cat==='Liability'){liab+=x.v;addM(x.a.member,-x.v)}
-    else{other+=x.v;const c=(ASSET_CATS.find(c=>c.k===x.a.cat)||{}).cls||'Other';byClass[c]=(byClass[c]||0)+x.v;addM(x.a.member,x.v)
-      const o=pc(c);o.value+=x.v;o.n++;const cost=+x.a.cost;
+    const spread=(v)=>{for(const id of x.own)addM(id,scope==='all'?v/x.own.length:v)};
+    if(x.a.cat==='Liability'){liab+=x.v;spread(-x.v)}
+    else{other+=x.v;const c=(ASSET_CATS.find(c=>c.k===x.a.cat)||{}).cls||'Other';byClass[c]=(byClass[c]||0)+x.v;spread(x.v)
+      const o=pc(c);o.value+=x.v;o.n++;const cost=x.cost;
       if(cost>0&&!x.missingRate){const g=x.v-cost;inv+=cost;pnl+=g;costCovered+=x.v;o.cov+=x.v;o.inv+=cost;o.pnl+=g}}
   }
   const assets=mkt+other;
@@ -755,7 +767,7 @@ function vHoldings(){
 /* ---------- other assets ---------- */
 function vAssets(){
   const l=loadingOrEmpty();if(l)return l;
-  const as=S.assets.filter(a=>inScope(a.member,S.scope)).map(a=>({a,...assetValue(a)}));
+  const as=assetEntries(S.scope);
   const metals=`<section class="panel"><div class="sec-head"><div><h2>Rates for gold and silver</h2><div class="muted" style="font-size:12px;margin-top:2px">Used to value anything entered in grams. Rate per gram of pure metal.</div></div><button class="btn btn-ghost btn-sm" data-act="go" data-v="settings">Change</button></div>
     <div class="actions">${[['24K',24],['22K',22],['18K',18]].map(([k,n])=>`<span class="chip">Gold ${k} ${fin(S.settings.gold)?'₹'+INR0.format(S.settings.gold*n/24)+'/g':'not set'}</span>`).join('')}<span class="chip">Silver (pure) ${fin(S.settings.silver)?'₹'+INR2.format(S.settings.silver)+'/g':'not set'}</span></div></section>`;
   const groups=ASSET_CATS.map(cat=>{
@@ -765,11 +777,12 @@ function vAssets(){
   return `<div class="sec-head" style="margin:0"><div><h2 style="font-size:18px">Other assets and loans</h2><div class="muted" style="font-size:12px;margin-top:2px">${esc(scopeName())}. Everything outside the stock market that counts toward net worth.</div></div><button class="btn btn-primary" data-act="add-asset">+ Add asset or loan</button></div>${metals}${groups}`;
 }
 function assetCard(x){
-  const a=x.a,m=memberOf(a.member),multi=S.scope==='all'&&S.members.length>1;
-  const gain=a.cost!=null&&a.cost!==''&&a.cat!=='Liability'?x.v-(+a.cost):null;
-  return `<div class="panel card-asset" style="padding:14px;background:rgba(255,255,255,.025)"><div class="top"><div style="min-width:0"><b style="color:#fff">${esc(a.name)}</b><div class="muted" style="font-size:12px">${multi?`<span class="dot" style="background:${esc(m.color)};margin-right:6px"></span>${esc(m.name)} · `:''}${esc(a.sub||a.cat)}${a.mode==='grams'?` · ${qtyf(+a.grams)} g`:''}</div></div><button class="btn btn-ghost btn-sm" data-act="edit-asset" data-id="${esc(a.id)}">Edit</button></div>
+  const a=x.a,m=memberOf(a.member),multi=S.scope==='all'&&S.members.length>1,joint=x.own.length>1;
+  const gain=x.cost>0&&a.cat!=='Liability'?x.v-x.cost:null;
+  const ownLine=joint?(S.scope==='all'?`<span class="chip" style="padding:1px 8px;margin-right:6px">Joint</span>${esc(x.own.map(id=>memberOf(id).name).join(' & '))} · `:`<span class="chip" style="padding:1px 8px;margin-right:6px">Joint</span>Your 1/${x.own.length} of ${M(x.total)} · `):(multi?`<span class="dot" style="background:${esc(m.color)};margin-right:6px"></span>${esc(m.name)} · `:'');
+  return `<div class="panel card-asset" style="padding:14px;background:rgba(255,255,255,.025)"><div class="top"><div style="min-width:0"><b style="color:#fff">${esc(a.name)}</b><div class="muted" style="font-size:12px">${ownLine}${esc(a.sub||a.cat)}${a.mode==='grams'?` · ${qtyf(+a.grams)} g`:''}</div></div><button class="btn btn-ghost btn-sm" data-act="edit-asset" data-id="${esc(a.id)}">Edit</button></div>
    <div class="mv" style="font-size:20px;font-weight:700;color:${a.cat==='Liability'?'var(--loss)':'#fff'}">${x.missingRate?'<span class="chip warn">set rate</span>':fmt(x.v)}</div>
-   <div class="muted" style="font-size:12px">${gain!=null?`Bought for ${M(+a.cost)} · <span class="${cls_(gain)}">${M(gain)}</span>`:''}${a.date?` ${gain!=null?'· ':''}Updated ${dfmt(a.date)}`:''}</div>${a.note?`<div class="soft" style="font-size:12px">${esc(a.note)}</div>`:''}</div>`;
+   <div class="muted" style="font-size:12px">${gain!=null?`Bought for ${M(x.cost)} · <span class="${cls_(gain)}">${M(gain)}</span>`:''}${a.date?` ${gain!=null?'· ':''}Updated ${dfmt(a.date)}`:''}</div>${a.note?`<div class="soft" style="font-size:12px">${esc(a.note)}</div>`:''}</div>`;
 }
 
 /* ---------- family ---------- */
@@ -937,7 +950,7 @@ function assetModal(id,cat){
   const c=a?a.cat:(cat||'Real Estate');
   const grams=a&&a.mode==='grams';
   openModal(`${mhead(a?'Edit asset':'Add asset or loan')}
-  <div class="form-grid"><label class="fld"><span>Whose is it</span><select id="as-mem">${memberOptions(a?a.member:defaultMember())}</select></label>
+  <div class="form-grid"><div class="fld" id="as-own-f"><span>${S.members.length>1?'Owned by (tick more than one for joint)':'Owner'}</span><div class="actions" id="as-own" style="margin-top:4px">${S.members.map(m=>{const sel=a?assetOwners(a):[defaultMember()];return `<label class="chip" style="cursor:pointer"><input type="checkbox" class="as-o" id="as-o-${esc(m.id)}" value="${esc(m.id)}" ${sel.includes(m.id)?'checked':''}> ${esc(m.name)}</label>`}).join('')}</div><small id="as-own-note"></small></div>
    <label class="fld"><span>Category</span><select id="as-cat">${ASSET_CATS.map(x=>`<option value="${esc(x.k)}" ${x.k===c?'selected':''}>${esc(x.k==='Liability'?'Loan or liability':x.k)}</option>`).join('')}</select></label></div>
   <div class="form-grid"><label class="fld"><span>Name</span><input type="text" id="as-name" value="${esc(a?a.name:'')}" placeholder="2BHK flat, Jayanagar"></label><label class="fld"><span>Detail (optional)</span><input type="text" id="as-sub" value="${esc(a?a.sub||'':'')}" placeholder="PPF, FD, home loan"></label></div>
   <div id="as-metal" ${c==='Gold'||c==='Silver'?'':'hidden'}><div class="seg" role="group" aria-label="Enter by"><button type="button" data-act="as-mode" data-m="grams" aria-pressed="${grams}">By weight</button><button type="button" data-act="as-mode" data-m="value" aria-pressed="${!grams}">By value</button></div>
@@ -945,7 +958,13 @@ function assetModal(id,cat){
   <div class="form-grid" id="as-vals"><label class="fld" id="as-value-f"><span id="as-vl">Current value (₹)</span><input type="number" step="any" id="as-value" value="${a&&a.value!=null?a.value:''}"></label><label class="fld" id="as-cost-f"><span>Bought for (₹, optional)</span><input type="number" step="any" id="as-cost" value="${a&&a.cost!=null&&a.cost!==''?a.cost:''}"></label></div>
   <label class="fld"><span>Note (optional)</span><input type="text" id="as-note" value="${esc(a?a.note||'':'')}"></label>
   <div class="modal-foot">${a?`<span id="as-delbox"><button class="btn btn-danger" data-act="as-del-ask" data-id="${esc(a.id)}">Delete</button></span>`:''}<button class="btn btn-ghost" data-act="close">Cancel</button><button class="btn btn-primary" data-act="as-save" data-id="${a?esc(a.id):''}">Save</button></div>`,{title:'Asset'});
-  S._asMode=grams?'grams':'value';S._asEdit=a;asRefresh(a);
+  S._asMode=grams?'grams':'value';S._asEdit=a;asRefresh(a);asOwnNote();
+}
+function asOwners(){return [...document.querySelectorAll('.as-o:checked')].map(e=>e.value)}
+function asOwnNote(){
+  const el=$('#as-own-note');if(!el)return;const own=asOwners(),n=own.length;
+  if(n<2){el.textContent=S.members.length>1?'Owned by one person. Tick more people to split the value equally.':'';return}
+  const v=numv('as-value');el.textContent=`Split equally between ${n} people, ${Math.round(100/n*100)/100}% each`+(v>0?`, about ${compact(v/n)} each.`:'.');
 }
 function asRefresh(a){
   const c=val('as-cat'),metal=c==='Gold'||c==='Silver';
@@ -960,7 +979,9 @@ function asRefresh(a){
 function asSave(id){
   const cat=val('as-cat'),name=val('as-name');if(!name){toast('Enter a name',true);return}
   const metal=(cat==='Gold'||cat==='Silver')&&S._asMode==='grams';
-  const o={id:id||uid(),member:val('as-mem'),cat,name,sub:val('as-sub'),note:val('as-note'),date:today()};
+  const own=asOwners();if(!own.length){toast('Choose at least one owner',true);return}
+  const o={id:id||uid(),member:own[0],cat,name,sub:val('as-sub'),note:val('as-note'),date:today()};
+  if(own.length>1)o.members=own;
   if(metal){const g=numv('as-grams');if(!(g>0)){toast('Enter the weight in grams',true);return}o.mode='grams';o.grams=g;o.fine=parseFloat(val('as-fine'))||1;o.value=null}
   else{const v=numv('as-value');if(v==null){toast('Enter a value',true);return}o.mode='value';o.value=v}
   const cst=numv('as-cost');if(cst!=null&&cat!=='Liability')o.cost=cst;
@@ -1263,8 +1284,8 @@ function exportData(k){
     return saveFile('holdings.csv',toCSV(['Member','Symbol','Name','Type','Class','Currency','Quantity','Avg buy price','Price','Value INR','Unrealised P&L INR'],rows))}
   if(k==='txns'){const rows=[];S.holdings.forEach(h=>(h.txns||[]).forEach(t=>rows.push([memberOf(h.member).name,h.sym,t.d||'',t.t,t.q,t.p==null?'':t.p,t.fee||0])));
     return saveFile('transactions.csv',toCSV(['Member','Symbol','Date','Type','Quantity','Price','Fees'],rows))}
-  if(k==='assets'){const rows=S.assets.map(a=>[memberOf(a.member).name,a.cat,a.name,a.sub||'',assetValue(a).v,a.cost==null?'':a.cost,a.note||'']);
-    return saveFile('other-assets.csv',toCSV(['Member','Category','Name','Detail','Value INR','Bought for','Note'],rows))}
+  if(k==='assets'){const rows=S.assets.map(a=>[assetOwners(a).map(id=>memberOf(id).name).join(' & '),a.cat,a.name,a.sub||'',assetValue(a).v,a.cost==null?'':a.cost,a.note||'']);
+    return saveFile('other-assets.csv',toCSV(['Members (joint assets list all owners)','Category','Name','Detail','Value INR (full)','Bought for (full)','Note'],rows))}
   return saveFile('fintrack-backup.json',JSON.stringify({exported:today(),members:S.members,holdings:S.holdings,assets:S.assets,settings:S.settings,snaps:S.snaps},null,1));
 }
 function template(k){
@@ -1311,7 +1332,7 @@ document.addEventListener('click',e=>{
     case 'mb-col':{$('#mb-col').value=t.dataset.c;$$('[data-act=mb-col]').forEach(b=>b.style.borderColor=b===t?'#fff':'transparent');break}
     case 'mb-save':{const nm=val('mb-name');if(!nm){toast('Enter a name',true);break}const ex=S.members.find(x=>x.id===t.dataset.id);Store.put('members',{...(ex||{}),id:ex?ex.id:uid(),name:nm,relation:val('mb-rel'),color:val('mb-col'),order:ex?ex.order:S.members.length});closeModal();toast('Saved');break}
     case 'mb-del-ask':$('#mb-delbox').innerHTML=`<button class="btn btn-danger" data-act="mb-del" data-id="${esc(t.dataset.id)}">Delete with all their data</button>`;break;
-    case 'mb-del':{const id=t.dataset.id;S.holdings.filter(h=>h.member===id).forEach(h=>Store.del('holdings',h.id));S.assets.filter(x=>x.member===id).forEach(x=>Store.del('assets',x.id));Store.del('members',id);if(S.scope===id)S.scope='all';closeModal();toast('Member deleted');break}
+    case 'mb-del':{const id=t.dataset.id;S.holdings.filter(h=>h.member===id).forEach(h=>Store.del('holdings',h.id));S.assets.filter(x=>assetOwners(x).includes(id)).forEach(x=>{const rest=assetOwners(x).filter(o=>o!==id);if(rest.length){const n={...x,member:rest[0]};if(rest.length>1)n.members=rest;else delete n.members;Store.put('assets',n)}else Store.del('assets',x.id)});Store.del('members',id);if(S.scope===id)S.scope='all';closeModal();toast('Member deleted');break}
     case 'imp-toggle':{IMP.sheets[+t.dataset.i].use=t.checked;$('#imp-body').innerHTML=impBody();break}
     case 'imp-clear':IMP.sheets=[];IMP.file='';render();break;
     case 'imp-go':runImport();break;
@@ -1362,6 +1383,7 @@ document.addEventListener('change',e=>{
   else if(id==='ah-type'){$('#ah-ccy').textContent=e.target.value==='us'?'$':'₹'}
   else if(id==='ah-mem'||id==='ah-sym')ahCheckExisting();
   else if(id==='as-cat'){asRefresh(S._asEdit)}
+  else if(id&&id.indexOf('as-o-')===0||id==='as-value')asOwnNote();
   else if(id==='im-mem'){IMP.member=e.target.value;$('#im-new').hidden=e.target.value!=='__new'}
   else if(id==='im-mode')IMP.mode=e.target.value;
   else if(id==='im-src')IMP.src=e.target.value;

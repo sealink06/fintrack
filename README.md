@@ -90,6 +90,7 @@ Tap any holding to see quantity, average buy price, current price, value and pro
 - **Gold and silver** can be entered by value, or in grams with a purity (for example 22K). Grams are valued from the gold and silver rates, so they move with the live rate.
 - **Liabilities** are entered as positive amounts and subtracted from net worth.
 - Each asset can hold a cost, a date and a note.
+- **Joint ownership.** When adding an asset, tick more than one family member under "Owned by". The value, cost and profit are split equally between them, so each person's portfolio shows their share while the family total counts the asset once. This works for property, gold, loans and any other asset or liability. If a member is deleted, the asset stays with the remaining owners.
 
 ### Net worth history
 
