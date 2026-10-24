@@ -50,13 +50,13 @@ It is one file (`index.html`). There is no server, no build step and no account 
 1. Open the page (the GitHub Pages link above, or `index.html` on your computer).
 2. The first screen offers to create a login. Either create one, or choose **Skip for now** to try the app as it is. You can add a login later from Settings.
 3. A short welcome asks **what to call you** and **who you are tracking**:
-   - **Just me:** the page is just for you. The heading reads "Robert's wealth cockpit" and the family switcher is hidden.
-   - **My family:** you also give an optional family name ("Johnson family wealth cockpit") and the app opens the Family section so you can add members.
+   - **Just me:** the page is just for you. The heading reads "Robert's net worth" and the family switcher is hidden.
+   - **My family:** you also give an optional family name ("Johnson family net worth") and the app opens the Family section so you can add members.
 4. Add holdings with **+ Add**, or bring them in with **Import**.
 5. Add gold, silver, property, deposits and loans under **Assets**.
 6. Open **Settings** to check the live price options, and change who you are tracking at any time.
 
-The welcome appears only on a fresh start, with no data and no family members added. Choosing **Skip for now** on it keeps the defaults ("Me" and "Family wealth cockpit").
+The welcome appears only on a fresh start, with no data and no family members added. Choosing **Skip for now** on it keeps the defaults ("Me" and "Family net worth").
 
 ---
 

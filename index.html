@@ -173,7 +173,7 @@ body.locked .wrap{visibility:hidden}
 <div class="wrap">
   <header class="top"><div class="top-in">
     <div class="top-row">
-      <div class="brand"><span class="logo"><svg width="26" height="26" viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke-width="6" stroke-linecap="round" transform="rotate(55.2 24 24)"><circle cx="24" cy="24" r="14" stroke="#7c5cff" stroke-dasharray="13.5 88"/><circle cx="24" cy="24" r="14" stroke="#21d4fd" stroke-dasharray="10 88" stroke-dashoffset="-20"/><circle cx="24" cy="24" r="14" stroke="#16c784" stroke-dasharray="8 88" stroke-dashoffset="-36.5"/><circle cx="24" cy="24" r="14" stroke="#f0b90b" stroke-dasharray="10 88" stroke-dashoffset="-51"/></g></svg></span><div><b>CORPUS</b><span id="brand-sub">Family wealth cockpit</span></div></div>
+      <div class="brand"><span class="logo"><svg width="26" height="26" viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke-width="6" stroke-linecap="round" transform="rotate(55.2 24 24)"><circle cx="24" cy="24" r="14" stroke="#7c5cff" stroke-dasharray="13.5 88"/><circle cx="24" cy="24" r="14" stroke="#21d4fd" stroke-dasharray="10 88" stroke-dashoffset="-20"/><circle cx="24" cy="24" r="14" stroke="#16c784" stroke-dasharray="8 88" stroke-dashoffset="-36.5"/><circle cx="24" cy="24" r="14" stroke="#f0b90b" stroke-dasharray="10 88" stroke-dashoffset="-51"/></g></svg></span><div><b>CORPUS</b><span id="brand-sub">Family net worth</span></div></div>
       <div class="actions">
         <span class="status" id="status"></span>
         <button class="btn btn-ghost icon-btn" id="btn-mask" title="Hide amounts" aria-label="Hide amounts" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
@@ -267,7 +267,7 @@ const Auth={dek:null,rec:null,iters:200000,active:false,t:0,fails:0,
     document.body.classList.add('locked');
     const root=document.createElement('div');root.className='lock';root.id='lock';document.body.appendChild(root);
     const hasOld=!rec&&old&&((old.holdings||[]).length||(old.assets||[]).length);
-    const head='<div class="brand"><span class="logo"><svg width="26" height="26" viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke-width="6" stroke-linecap="round" transform="rotate(55.2 24 24)"><circle cx="24" cy="24" r="14" stroke="#7c5cff" stroke-dasharray="13.5 88"/><circle cx="24" cy="24" r="14" stroke="#21d4fd" stroke-dasharray="10 88" stroke-dashoffset="-20"/><circle cx="24" cy="24" r="14" stroke="#16c784" stroke-dasharray="8 88" stroke-dashoffset="-36.5"/><circle cx="24" cy="24" r="14" stroke="#f0b90b" stroke-dasharray="10 88" stroke-dashoffset="-51"/></g></svg></span><div><b>CORPUS</b><span>Wealth cockpit</span></div></div>';
+    const head='<div class="brand"><span class="logo"><svg width="26" height="26" viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke-width="6" stroke-linecap="round" transform="rotate(55.2 24 24)"><circle cx="24" cy="24" r="14" stroke="#7c5cff" stroke-dasharray="13.5 88"/><circle cx="24" cy="24" r="14" stroke="#21d4fd" stroke-dasharray="10 88" stroke-dashoffset="-20"/><circle cx="24" cy="24" r="14" stroke="#16c784" stroke-dasharray="8 88" stroke-dashoffset="-36.5"/><circle cx="24" cy="24" r="14" stroke="#f0b90b" stroke-dasharray="10 88" stroke-dashoffset="-51"/></g></svg></span><div><b>CORPUS</b><span>Your wealth, in one place</span></div></div>';
     const err=m=>{const e=$('#lk-err');if(e)e.textContent=m||''};
     const finish=(dek,data)=>{this.dek=dek;this.active=true;root.remove();document.body.classList.remove('locked');const b=$('#btn-lock');if(b)b.hidden=false;resolve({data})};
     const lbl=(setup)=>setup?'Create login':'Open dashboard';
@@ -634,8 +634,8 @@ const NAVS=[['dashboard','Dashboard'],['holdings','Holdings'],['assets','Other a
 function isSolo(){return S.settings.trackMode==='solo'&&S.members.length<=1}
 function ownerName(){const m=S.members[0],n=m?String(m.name||'').trim():'';return !n||/^me$/i.test(n)?'':n}
 function brandSub(){
-  if(isSolo()){const n=ownerName();return n?n+"'s wealth cockpit":'My wealth cockpit'}
-  const n=String(S.settings.familyName||'').trim();return n?n+' family wealth cockpit':'Family wealth cockpit'}
+  if(isSolo()){const n=ownerName();return n?n+"'s net worth":'My net worth'}
+  const n=String(S.settings.familyName||'').trim();return n?n+' family net worth':'Family net worth'}
 function renderChrome(){
   $('#brand-sub').textContent=brandSub();
   const sc=$('#scopes');sc.hidden=isSolo();
@@ -861,7 +861,7 @@ function vSettings(){
     ${S.members.length>1?'<div class="muted" style="font-size:12px;margin-top:10px">Just me is available when only one person is added.</div>':''}</section>`;
   return `<div class="grid g-2">
   ${modePanel}
-  ${solo?'':`<section class="panel"><h2>Family name</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Shown under the title at the top. Enter Johnson to see "Johnson family wealth cockpit". Leave it empty for just "Family wealth cockpit".</div>
+  ${solo?'':`<section class="panel"><h2>Family name</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Shown under the title at the top. Enter Johnson to see "Johnson family net worth". Leave it empty for just "Family net worth".</div>
     <label class="fld"><span>Family name</span><input type="text" id="s-family" maxlength="30" placeholder="Johnson" value="${esc(st.familyName||'')}" autocomplete="off"></label>
     <div class="actions" style="margin-top:14px"><button class="btn btn-primary" data-act="save-family">Save name</button></div></section>`}
   <section class="panel"><h2>Rates</h2><div class="muted" style="font-size:12px;margin:4px 0 14px">Used to value US holdings and gold or silver entered in grams.</div>
@@ -1433,12 +1433,12 @@ const Onboard={name:'',
   },
   choiceStep(){
     openModal(`${this.head('Hi '+esc(this.name)+'. Who are you tracking?','You can change this later in Settings.')}
-    <div style="display:grid;gap:10px"><button type="button" class="panel choice" data-act="ob-solo"><b>Just me</b><span>Only my own finances. The heading reads "${esc(this.name)}'s wealth cockpit".</span></button>
+    <div style="display:grid;gap:10px"><button type="button" class="panel choice" data-act="ob-solo"><b>Just me</b><span>Only my own finances. The heading reads "${esc(this.name)}'s net worth".</span></button>
     <button type="button" class="panel choice" data-act="ob-family"><b>My family</b><span>Me and my family members, each with their own portfolio and one family total.</span></button></div>
     <div class="modal-foot"><button class="btn btn-ghost" type="button" data-act="ob-back">Back</button></div>`,{sticky:true,title:'Who are you tracking'});
   },
   familyStep(){
-    openModal(`${this.head('Your family name','Optional. It appears under the title, for example "Johnson family wealth cockpit".')}
+    openModal(`${this.head('Your family name','Optional. It appears under the title, for example "Johnson family net worth".')}
     <form id="ob-form3"><label class="fld"><span>Family name</span><input type="text" id="ob-fam" maxlength="30" placeholder="Johnson" autocomplete="off"></label>
     <div class="modal-foot"><button class="btn btn-ghost" type="button" data-act="ob-back2">Back</button><button class="btn btn-primary" type="submit">Continue and add members</button></div></form>`,{sticky:true,title:'Family name'});
   },
