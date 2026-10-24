@@ -1,4 +1,4 @@
-# Corpus
+# CORPUS
 
 A single-page wealth tracker for one person or a whole family. It shows the combined net worth of everyone in the household across Indian stocks, ETFs, mutual funds, US stocks, bonds, gold, silver, real estate, retirement accounts, deposits and loans, with correct profit and loss based on average buy prices.
 
@@ -211,7 +211,7 @@ This is a lock for a personal device, not a bank-grade account system. It stops 
 - **There is no server and no database.** The page on GitHub is only the program. It does not receive or store your data.
 - **Different devices do not share data.** A phone and a laptop each have their own copy. Use export and backup to move data between them.
 - **Clearing browser data erases your data.** Use a private or incognito window and the data disappears when you close it. Back up first.
-- **Outside requests the app makes:** price lookups (see Live prices) and the Excel-reading library, loaded from cdnjs. Nothing about your holdings is sent in these requests.
+- **Outside requests the app makes:** price lookups (see Live prices) and the Excel-reading library (from cdnjs) and the Sora and Inter fonts (from Google Fonts). Nothing about your holdings is sent in these requests.
 - **Do not put real family data into a public repository.** Only the app (`index.html`) belongs on GitHub, and it starts empty.
 
 ---
@@ -288,7 +288,7 @@ A one-click restore from the JSON backup is not available yet. To move data, re-
 - One HTML file with inline CSS and JavaScript. No framework and no build tooling.
 - Reads Excel files with [SheetJS](https://sheetjs.com/) (`xlsx` 0.18.5), loaded from cdnjs.
 - Storage: browser `localStorage`. With sign-in on, it is stored encrypted using the Web Crypto API (AES-GCM, PBKDF2).
-- Design: a dark theme with an ink background, green for gains, red for losses and violet and cyan accents.
+- Design: a dark theme with an ink background, green for gains, red for losses and violet and cyan accents. Headings use Sora and everything else uses Inter. The logo is an open ring of four colour slices (violet, cyan, green and gold) that echoes the allocation chart.
 - Averages use the average cost method, with unknown-cost lots tracked separately.
 
 ---
